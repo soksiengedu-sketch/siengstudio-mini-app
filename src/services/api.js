@@ -217,6 +217,73 @@ export const api = {
     }
   },
 
+  async deleteEpisode(dramaId, episodeId, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes/${episodeId}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-pin': adminPin }
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Admin delete episode error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
+  async deleteAllEpisodes(dramaId, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes`, {
+        method: 'DELETE',
+        headers: { 'x-admin-pin': adminPin }
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Admin delete all episodes error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
+  async updateEpisode(dramaId, episodeId, episodeData, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes/${episodeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        body: JSON.stringify(episodeData)
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Admin update episode error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
+  async setEpisodes(dramaId, episodes, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        body: JSON.stringify({ episodes })
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Admin set episodes error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
+  async deleteDrama(dramaId, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-pin': adminPin }
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Admin delete drama error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
   async getAdminStats(adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/stats`, {

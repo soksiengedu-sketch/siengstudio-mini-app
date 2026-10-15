@@ -243,6 +243,38 @@ app.put('/api/admin/dramas/:id/episodes', checkAdminPin, (req, res) => {
   res.json({ success: true, count: episodes.length, episodes: result });
 });
 
+// Admin: Delete Particular Episode
+app.delete('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req, res) => {
+  const { dramaId, episodeId } = req.params;
+  const result = db.deleteEpisode(dramaId, episodeId);
+  if (!result) return res.status(404).json({ error: 'Drama not found' });
+  res.json({ success: true, remainingCount: result.length, episodes: result });
+});
+
+// Admin: Delete All Episodes of Drama
+app.delete('/api/admin/dramas/:dramaId/episodes', checkAdminPin, (req, res) => {
+  const { dramaId } = req.params;
+  const result = db.deleteAllEpisodes(dramaId);
+  if (result === null) return res.status(404).json({ error: 'Drama not found' });
+  res.json({ success: true, message: 'All episodes deleted successfully', count: 0 });
+});
+
+// Admin: Update Particular Episode
+app.put('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req, res) => {
+  const { dramaId, episodeId } = req.params;
+  const updated = db.updateEpisode(dramaId, episodeId, req.body);
+  if (!updated) return res.status(404).json({ error: 'Episode or Drama not found' });
+  res.json({ success: true, episode: updated });
+});
+
+// Admin: Delete Drama
+app.delete('/api/admin/dramas/:dramaId', checkAdminPin, (req, res) => {
+  const { dramaId } = req.params;
+  const deleted = db.deleteDrama(dramaId);
+  if (!deleted) return res.status(404).json({ error: 'Drama not found' });
+  res.json({ success: true, message: 'Drama deleted' });
+});
+
 // Admin: Stats
 app.get('/api/admin/stats', checkAdminPin, (req, res) => {
   const dramas = db.getDramas();

@@ -112,6 +112,49 @@ class Database {
     return drama.episodes;
   }
 
+  deleteEpisode(dramaId, episodeId) {
+    const drama = this.getDramaById(dramaId);
+    if (!drama) return null;
+    const targetId = Number(episodeId);
+    drama.episodes = (drama.episodes || []).filter(
+      (e) => e.id !== targetId && e.episodeNumber !== targetId
+    );
+    this.save();
+    return drama.episodes;
+  }
+
+  deleteAllEpisodes(dramaId) {
+    const drama = this.getDramaById(dramaId);
+    if (!drama) return null;
+    drama.episodes = [];
+    this.save();
+    return [];
+  }
+
+  updateEpisode(dramaId, episodeId, episodeData) {
+    const drama = this.getDramaById(dramaId);
+    if (!drama) return null;
+    const targetId = Number(episodeId);
+    const index = (drama.episodes || []).findIndex(
+      (e) => e.id === targetId || e.episodeNumber === targetId
+    );
+    if (index === -1) return null;
+    drama.episodes[index] = {
+      ...drama.episodes[index],
+      ...episodeData
+    };
+    this.save();
+    return drama.episodes[index];
+  }
+
+  deleteDrama(dramaId) {
+    const index = this.data.dramas.findIndex((d) => d.id === dramaId);
+    if (index === -1) return false;
+    this.data.dramas.splice(index, 1);
+    this.save();
+    return true;
+  }
+
   // --- Users ---
   getUser(telegramId) {
     const id = String(telegramId);
