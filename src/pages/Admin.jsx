@@ -27,10 +27,10 @@ import {
 import { haptic } from '../services/telegram';
 
 export default function Admin() {
-  const { setActiveTab, authenticatedAdminPin } = useApp();
+  const { setActiveTab, authenticatedAdminPin, adminInitialTab } = useApp();
   const [dramas, setDramas] = useState([]);
   const [stats, setStats] = useState({ totalDramas: 0, totalEpisodes: 0, totalViews: 0 });
-  const [activeTab, setActiveTabLocal] = useState('manage'); // 'manage' | 'addDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
+  const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
   const [selectedDramaId, setSelectedDramaId] = useState('');
   const [message, setMessage] = useState(null);
   const [searchEp, setSearchEp] = useState('');
@@ -95,6 +95,12 @@ export default function Admin() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (adminInitialTab) {
+      setActiveTabLocal(adminInitialTab);
+    }
+  }, [adminInitialTab]);
 
   // Update batch startEp and newEpisode defaults when selected drama changes
   useEffect(() => {
@@ -345,13 +351,21 @@ export default function Admin() {
             SiengStudio CMS & Episode Studio
           </h1>
         </div>
-        <button
-          onClick={loadData}
-          className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white active:scale-95 transition-transform"
-          title="Refresh Data"
-        >
-          <RefreshCw size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTabLocal('addDrama')}
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-md shadow-purple-900/40 active:scale-95 transition-all"
+          >
+            <Plus size={14} /> + បន្ថែមរឿងថ្មី
+          </button>
+          <button
+            onClick={loadData}
+            className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white active:scale-95 transition-transform"
+            title="Refresh Data"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Overview Stats */}
@@ -440,6 +454,25 @@ export default function Admin() {
       {/* ================= TAB: MANAGE EPISODES & DRAMAS ================= */}
       {activeTab === 'manage' && (
         <div className="mt-4 space-y-4">
+          {/* Quick Create Drama Banner Card */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/70 via-pink-950/50 to-purple-950/70 border border-purple-500/30 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/30 text-purple-300 flex items-center justify-center border border-purple-500/30 shrink-0">
+                <Film size={20} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-white">បន្ថែមរឿងភាគថ្មី (Add New Drama)</h3>
+                <p className="text-[10px] text-gray-300 mt-0.5">បង្កើតចំណងជើងរឿង រូបភាព Poster និងបញ្ចូលភាគថ្មីៗ</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTabLocal('addDrama')}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-extrabold shadow-lg shadow-purple-900/40 active:scale-95 transition-transform flex items-center gap-1 shrink-0"
+            >
+              <Plus size={14} /> + បង្កើតរឿង
+            </button>
+          </div>
+
           {/* Drama Selector Card */}
           <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
             <label className="text-xs font-bold text-gray-300 flex items-center justify-between">

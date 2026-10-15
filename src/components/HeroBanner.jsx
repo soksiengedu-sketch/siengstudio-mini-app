@@ -23,7 +23,7 @@ export default function HeroBanner({ featured = [] }) {
   const desc = lang === 'km' && item.descriptionKm ? item.descriptionKm : item.description;
 
   return (
-    <div className="relative w-full h-[360px] overflow-hidden rounded-b-3xl shadow-2xl">
+    <div className="relative w-full h-[360px] sm:h-[440px] md:h-[500px] overflow-hidden rounded-b-3xl sm:rounded-3xl shadow-2xl">
       {/* Background Image with Gradient Overlay */}
       <img
         src={item.bannerUrl || item.posterUrl}
@@ -34,7 +34,7 @@ export default function HeroBanner({ featured = [] }) {
       <div className="absolute inset-0 bg-gradient-to-r from-[#0b0c13]/80 via-transparent to-transparent" />
 
       {/* Content */}
-      <div className="absolute bottom-5 left-0 right-0 px-5 flex flex-col items-start">
+      <div className="absolute bottom-5 left-0 right-0 px-5 sm:px-8 max-w-4xl flex flex-col items-start">
         {/* Badges */}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/90 text-white text-[11px] font-bold shadow-md">
@@ -56,12 +56,12 @@ export default function HeroBanner({ featured = [] }) {
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl font-black text-white tracking-tight leading-tight line-clamp-2 drop-shadow-md">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-white tracking-tight leading-tight line-clamp-2 drop-shadow-md">
           {title}
         </h1>
 
         {/* Description */}
-        <p className="text-xs text-gray-300/90 line-clamp-2 mt-1 max-w-sm drop-shadow-sm font-normal">
+        <p className="text-xs sm:text-sm text-gray-300/90 line-clamp-2 mt-1 max-w-xl drop-shadow-sm font-normal">
           {desc}
         </p>
 

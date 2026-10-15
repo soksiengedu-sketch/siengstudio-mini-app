@@ -10,6 +10,11 @@ export const initTelegramApp = () => {
     try {
       tg.ready();
       tg.expand();
+      if (typeof tg.requestFullscreen === 'function') {
+        try {
+          tg.requestFullscreen();
+        } catch (err) {}
+      }
       tg.enableClosingConfirmation();
       if (tg.setHeaderColor) {
         tg.setHeaderColor('#0b0c13');

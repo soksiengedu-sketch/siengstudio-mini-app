@@ -3,11 +3,11 @@ import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import HeroBanner from '../components/HeroBanner';
 import DramaCard from '../components/DramaCard';
-import { Flame, Sparkles, Trophy, History, Play, Users, ArrowRight } from 'lucide-react';
+import { Flame, Sparkles, Trophy, History, Play, Users, ArrowRight, Plus, Film } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
 export default function Home() {
-  const { t, lang, openDrama, history, setIsShareModalOpen } = useApp();
+  const { t, lang, openDrama, history, setIsShareModalOpen, openAdmin } = useApp();
   const [dramas, setDramas] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -175,8 +175,18 @@ export default function Home() {
             <Sparkles size={16} className="text-yellow-400" />
             {t('newReleases')}
           </h2>
+
+          <button
+            onClick={() => {
+              haptic.medium();
+              openAdmin('addDrama');
+            }}
+            className="text-[11px] font-bold text-purple-300 hover:text-white flex items-center gap-1 bg-gradient-to-r from-purple-600/30 to-pink-600/30 px-2.5 py-1 rounded-xl border border-purple-500/30 active:scale-95 transition-all shadow-sm"
+          >
+            <Plus size={13} /> {lang === 'km' ? '+ បន្ថែមរឿងថ្មី' : '+ Add Drama'}
+          </button>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
           {newReleases.map((drama) => (
             <DramaCard key={drama.id} drama={drama} size="small" />
           ))}

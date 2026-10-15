@@ -26,6 +26,19 @@ export const AppProvider = ({ children }) => {
   const [hasCheckedInToday, setHasCheckedInToday] = useState(false);
 
   const [authenticatedAdminPin, setAuthenticatedAdminPin] = useState('');
+  const [adminInitialTab, setAdminInitialTab] = useState('manage');
+  const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
+  const [pendingAdminTargetTab, setPendingAdminTargetTab] = useState('manage');
+
+  const openAdmin = (tab = 'manage') => {
+    if (authenticatedAdminPin) {
+      setAdminInitialTab(tab);
+      setActiveTab('admin');
+    } else {
+      setPendingAdminTargetTab(tab);
+      setIsAdminAuthModalOpen(true);
+    }
+  };
 
   // Modals
   const [isCoinModalOpen, setIsCoinModalOpen] = useState(false);
@@ -250,7 +263,13 @@ export const AppProvider = ({ children }) => {
         isShareModalOpen,
         setIsShareModalOpen,
         authenticatedAdminPin,
-        setAuthenticatedAdminPin
+        setAuthenticatedAdminPin,
+        adminInitialTab,
+        setAdminInitialTab,
+        isAdminAuthModalOpen,
+        setIsAdminAuthModalOpen,
+        pendingAdminTargetTab,
+        openAdmin
       }}
     >
       {children}

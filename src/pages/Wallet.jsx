@@ -152,7 +152,7 @@ export default function Wallet() {
           <span className="text-[10px] text-rose-400 font-bold">Bakong KHQR</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {coinPackages.map((pkg) => (
             <div
               key={pkg.id}

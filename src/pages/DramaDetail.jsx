@@ -188,11 +188,11 @@ export default function DramaDetail({ dramaId, onBack }) {
             {t('episodes')} ({episodes.length})
           </h2>
           <span className="text-[11px] text-gray-400">
-            {lang === 'km' ? 'ភាគ 1-3 ឥតគិតថ្លៃ' : 'Ep 1-3 Free'}
+            {lang === 'km' ? 'ភាគ 1-10 ឥតគិតថ្លៃ' : 'Ep 1-10 Free'}
           </span>
         </div>
 
-        <div className="grid grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2.5">
           {episodes.map((ep) => {
             const unlocked = isEpisodeUnlocked(drama.id, ep);
 

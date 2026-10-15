@@ -13,7 +13,9 @@ import {
   ChevronRight,
   ExternalLink,
   Gift,
-  Lock
+  Lock,
+  Plus,
+  Film
 } from 'lucide-react';
 import { haptic, shareToTelegram } from '../services/telegram';
 
@@ -29,7 +31,7 @@ export default function Profile() {
     setActiveTab,
     setIsCoinModalOpen,
     setIsDailyModalOpen,
-    setAuthenticatedAdminPin
+    openAdmin
   } = useApp();
 
   const [showAdminPinModal, setShowAdminPinModal] = useState(false);
@@ -193,11 +195,31 @@ export default function Profile() {
           <ExternalLink size={16} className="text-gray-500" />
         </div>
 
+        {/* Quick Add New Drama */}
+        <div
+          onClick={() => {
+            haptic.medium();
+            openAdmin('addDrama');
+          }}
+          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors border-b border-white/5"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+              <Plus size={16} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-white">+ បន្ថែមរឿងថ្មី (Add New Drama)</p>
+              <p className="text-[10px] text-purple-300">បញ្ចូលរឿងភាគ និងរូបភាព Poster ថ្មី</p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="text-gray-500" />
+        </div>
+
         {/* Admin CMS Access */}
         <div
           onClick={() => {
             haptic.light();
-            setShowAdminPinModal(true);
+            openAdmin('manage');
           }}
           className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
         >
@@ -206,64 +228,13 @@ export default function Profile() {
               <Shield size={16} />
             </div>
             <div>
-              <p className="text-xs font-bold text-white">{t('adminPanel')}</p>
-              <p className="text-[10px] text-gray-400">Manage dramas & episodes</p>
+              <p className="text-xs font-bold text-white">{t('adminPanel')} (CMS)</p>
+              <p className="text-[10px] text-gray-400">គ្រប់គ្រងរឿង និងភាគ (Manage dramas & episodes)</p>
             </div>
           </div>
           <ChevronRight size={16} className="text-gray-500" />
         </div>
       </div>
-
-      {/* Admin PIN Prompt Modal */}
-      {showAdminPinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
-          <div className="w-full max-w-xs bg-[#151624] border border-white/10 rounded-3xl p-5 shadow-2xl flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mb-3">
-              <Lock size={22} />
-            </div>
-
-            <h3 className="text-base font-black text-white">{t('adminPanel')}</h3>
-            <p className="text-xs text-gray-400 mt-1">{t('adminPinPrompt')}</p>
-
-            <input
-              type="password"
-              value={adminPin}
-              onChange={(e) => {
-                setAdminPin(e.target.value);
-                setPinError(false);
-              }}
-              placeholder="••••••••"
-              className="w-full mt-4 py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 text-white text-center text-lg tracking-widest outline-none focus:border-rose-500"
-            />
-
-            {pinError && (
-              <p className="text-[11px] text-rose-400 font-semibold mt-1">
-                {lang === 'km' ? 'លេខកូដសម្ងាត់មិនត្រឹមត្រូវទេ!' : 'Incorrect Admin PIN!'}
-              </p>
-            )}
-
-            <div className="flex gap-2 w-full mt-4">
-              <button
-                onClick={() => {
-                  setShowAdminPinModal(false);
-                  setPinError(false);
-                  setAdminPin('');
-                }}
-                className="flex-1 py-2 rounded-xl bg-white/5 text-gray-400 text-xs font-bold"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                onClick={handleAdminAuth}
-                disabled={isVerifying}
-                className="flex-1 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-md shadow-rose-900/40 active:scale-95 transition-transform"
-              >
-                {isVerifying ? '...' : t('confirm')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

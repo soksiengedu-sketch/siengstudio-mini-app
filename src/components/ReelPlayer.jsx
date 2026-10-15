@@ -139,6 +139,31 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
     }
   };
 
+  // PC / Desktop keyboard controls (ArrowUp, ArrowDown, Space, M, F, Esc)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        nextEpisode();
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        prevEpisode();
+      } else if (e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === 'm' || e.key === 'M') {
+        toggleMute();
+      } else if (e.key === 'f' || e.key === 'F') {
+        setIsCinema((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        onBack();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentEpIndex, isPlaying, isMuted, isCinema]);
+
   // Touch handlers for vertical reel swipe
   const handleTouchStart = (e) => {
     touchStartY.current = e.touches[0].clientY;
@@ -206,10 +231,19 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Video Element */}
+      {/* Ambient Blurred Backdrop for PC / Wide displays */}
+      <div className="absolute inset-0 hidden md:block overflow-hidden pointer-events-none opacity-30 blur-3xl scale-125">
+        <img
+          src={drama.posterUrl}
+          className="w-full h-full object-cover"
+          alt=""
+        />
+      </div>
+
+      {/* Video Element - Fullscreen on mobile, centered 9:16 reel on PC */}
       <div
-        className={`relative w-full h-full flex items-center justify-center ${
-          isCinema ? 'max-h-screen' : ''
+        className={`relative w-full h-full max-w-lg mx-auto flex items-center justify-center bg-black ${
+          isCinema ? 'max-w-none' : ''
         }`}
         onDoubleClick={handleDoubleTap}
         onClick={togglePlay}

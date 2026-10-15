@@ -13,6 +13,7 @@ import Admin from './pages/Admin';
 import CoinModal from './components/CoinModal';
 import DailyCheckInModal from './components/DailyCheckInModal';
 import ShareModal from './components/ShareModal';
+import AdminAuthModal from './components/AdminAuthModal';
 import { api } from './services/api';
 
 function MainApp() {
@@ -34,12 +35,12 @@ function MainApp() {
   }, [currentDramaId]);
 
   return (
-    <div className="min-h-screen bg-[#0b0c13] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+    <div className="min-h-screen min-h-[100dvh] w-full bg-[#0b0c13] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* Top Header (hidden when watching full-screen reel player) */}
       {activeTab !== 'watch' && activeTab !== 'admin' && <Header />}
 
-      {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-lg mx-auto">
+      {/* Main Content Area - Full screen width on Mobile & Wide resolution on PC */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-0 sm:px-4 md:px-6">
         {activeTab === 'home' && <Home />}
         {activeTab === 'detail' && (
           <DramaDetail
@@ -68,6 +69,7 @@ function MainApp() {
       <CoinModal />
       <DailyCheckInModal />
       <ShareModal />
+      <AdminAuthModal />
     </div>
   );
 }

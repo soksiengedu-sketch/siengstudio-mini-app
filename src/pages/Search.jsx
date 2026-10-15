@@ -122,7 +122,7 @@ export default function Search() {
             <p className="text-sm font-semibold">{t('noResults')}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
             {results.map((drama) => (
               <DramaCard key={drama.id} drama={drama} size="small" />
             ))}

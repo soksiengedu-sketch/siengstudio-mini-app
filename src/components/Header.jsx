@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Coins, Gift, Crown, Globe } from 'lucide-react';
+import { Coins, Gift, Crown, Globe, Plus, Film } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
 export default function Header() {
@@ -13,11 +13,13 @@ export default function Header() {
     setIsCoinModalOpen,
     setIsDailyModalOpen,
     hasCheckedInToday,
-    setActiveTab
+    setActiveTab,
+    openAdmin
   } = useApp();
 
   return (
-    <header className="sticky top-0 z-30 bg-[#0b0c13]/90 backdrop-blur-md border-b border-white/5 px-4 py-2.5 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-[#0b0c13]/90 backdrop-blur-md border-b border-white/5 px-4 py-2.5">
+      <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
       {/* Brand */}
       <div 
         className="flex items-center gap-2.5 cursor-pointer active:scale-95 transition-transform"
@@ -94,6 +96,20 @@ export default function Header() {
           <Globe size={13} className="text-gray-400" />
           <span className="text-[11px] font-bold uppercase">{lang === 'km' ? 'KM' : 'EN'}</span>
         </button>
+
+        {/* Quick + Add Drama Button */}
+        <button
+          onClick={() => {
+            haptic.medium();
+            openAdmin('addDrama');
+          }}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-xs active:scale-95 transition-transform shadow-md shadow-purple-900/40"
+          title="Add New Drama"
+        >
+          <Plus size={13} />
+          <span className="text-[11px] font-bold">{lang === 'km' ? '+ រឿងថ្មី' : '+ Drama'}</span>
+        </button>
+      </div>
       </div>
     </header>
   );
