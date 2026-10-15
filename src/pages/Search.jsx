@@ -13,10 +13,16 @@ export default function Search() {
   const [results, setResults] = useState([]);
 
   useEffect(() => {
-    api.getDramas().then((data) => {
-      setAllDramas(data || []);
-      setResults(data || []);
-    });
+    const fetchDramas = () => {
+      api.getDramas().then((data) => {
+        setAllDramas(data || []);
+        setResults(data || []);
+      });
+    };
+    fetchDramas();
+    const handleUpdate = () => fetchDramas();
+    window.addEventListener('siengstudio_dramas_updated', handleUpdate);
+    return () => window.removeEventListener('siengstudio_dramas_updated', handleUpdate);
   }, []);
 
   const tags = [

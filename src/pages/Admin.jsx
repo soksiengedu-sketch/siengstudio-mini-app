@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import {
@@ -24,7 +24,9 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Download,
+  Upload
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
@@ -32,12 +34,14 @@ export default function Admin() {
   const { setActiveTab, authenticatedAdminPin, adminInitialTab, screenMode, toggleScreenMode, t, lang } = useApp();
   const [dramas, setDramas] = useState([]);
   const [stats, setStats] = useState({ totalDramas: 0, totalEpisodes: 0, totalViews: 0 });
-  const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
+  const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'editDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
   const [selectedDramaId, setSelectedDramaId] = useState('');
   const [message, setMessage] = useState(null);
   const [searchEp, setSearchEp] = useState('');
   const [editingEpisode, setEditingEpisode] = useState(null);
+  const [editingDrama, setEditingDrama] = useState(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Form states
   const [newDrama, setNewDrama] = useState({
@@ -96,6 +100,9 @@ export default function Admin() {
 
   useEffect(() => {
     loadData();
+    const handleUpdated = () => loadData();
+    window.addEventListener('siengstudio_dramas_updated', handleUpdated);
+    return () => window.removeEventListener('siengstudio_dramas_updated', handleUpdated);
   }, []);
 
   useEffect(() => {
@@ -168,6 +175,94 @@ export default function Admin() {
     } else {
       showMsg('error', res.message || 'Failed to delete drama');
     }
+  };
+
+  // --- Start Edit Drama ---
+  const startEditingDrama = (drama) => {
+    if (!drama) return;
+    haptic.light();
+    setEditingDrama({
+      id: drama.id,
+      title: drama.title || '',
+      titleKm: drama.titleKm || '',
+      description: drama.description || '',
+      descriptionKm: drama.descriptionKm || '',
+      posterUrl: drama.posterUrl || '',
+      bannerUrl: drama.bannerUrl || '',
+      genres: Array.isArray(drama.genres) ? drama.genres.join(', ') : (drama.genres || ''),
+      rating: drama.rating || '9.8',
+      isVipOnly: Boolean(drama.isVipOnly),
+      isFeatured: Boolean(drama.isFeatured),
+      episodes: drama.episodes || []
+    });
+    setActiveTabLocal('editDrama');
+  };
+
+  // --- Update Drama Details ---
+  const handleUpdateDrama = async (e) => {
+    e.preventDefault();
+    if (!editingDrama) return;
+    haptic.medium();
+    const dramaData = {
+      ...editingDrama,
+      genres: typeof editingDrama.genres === 'string'
+        ? editingDrama.genres.split(',').map((g) => g.trim()).filter(Boolean)
+        : editingDrama.genres
+    };
+    const res = await api.updateDrama(editingDrama.id, dramaData, authenticatedAdminPin);
+    if (res.success) {
+      haptic.success();
+      showMsg('success', `បានកែសម្រួលរឿង "${editingDrama.titleKm || editingDrama.title}" និងចងចាំចំនួនភាគ (${editingDrama.episodes?.length || 0} ភាគ) ដោយជោគជ័យ!`);
+      await loadData();
+      setActiveTabLocal('manage');
+    } else {
+      showMsg('error', res.message || 'Failed to update drama');
+    }
+  };
+
+  // --- Export Backup JSON ---
+  const handleDownloadBackup = async () => {
+    haptic.medium();
+    try {
+      const backup = await api.backupDatabase(authenticatedAdminPin);
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backup, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `siengstudio-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showMsg('success', 'បានទាញយក Backup JSON រួចរាល់! (Database exported successfully)');
+    } catch (err) {
+      showMsg('error', 'Failed to export backup: ' + err.message);
+    }
+  };
+
+  // --- Import Backup JSON ---
+  const handleImportBackup = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    haptic.medium();
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (!json || (!Array.isArray(json.dramas) && !Array.isArray(json))) {
+        showMsg('error', 'ឯកសារ JSON មិនត្រឹមត្រូវ (Invalid database JSON format)');
+        return;
+      }
+      const payload = Array.isArray(json) ? { dramas: json } : json;
+      const res = await api.importDatabase(payload, authenticatedAdminPin);
+      if (res.success) {
+        haptic.success();
+        showMsg('success', `បានបញ្ចូលទិន្នន័យ ${payload.dramas.length} រឿង និងចងចាំគ្រប់ភាគដោយជោគជ័យ!`);
+        await loadData();
+      } else {
+        showMsg('error', res.message || 'Import failed');
+      }
+    } catch (err) {
+      showMsg('error', 'Import failed: ' + err.message);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // --- Add Single Episode ---
@@ -353,13 +448,34 @@ export default function Admin() {
             SiengStudio CMS & Episode Studio
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setActiveTabLocal('addDrama')}
-            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-md shadow-purple-900/40 active:scale-95 transition-all"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-md shadow-purple-900/40 active:scale-95 transition-all"
           >
-            <Plus size={14} /> + បន្ថែមរឿងថ្មី
+            <Plus size={14} /> <span className="hidden sm:inline">+ បន្ថែមរឿងថ្មី</span><span className="sm:hidden">+ រឿង</span>
           </button>
+          <button
+            onClick={handleDownloadBackup}
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white active:scale-95 transition-transform"
+            title="ទាញយក Backup JSON (Export Backup)"
+          >
+            <Download size={15} />
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-400 hover:text-white active:scale-95 transition-transform"
+            title="ដាក់ទិន្នន័យចូលពី File (Import JSON Backup)"
+          >
+            <Upload size={15} />
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportBackup}
+            accept=".json,application/json"
+            className="hidden"
+          />
           <button
             onClick={toggleScreenMode}
             className={`p-2 rounded-xl border text-xs active:scale-95 transition-all ${
@@ -369,14 +485,14 @@ export default function Admin() {
             }`}
             title={screenMode === 'full' ? t('screenMinimize') : t('screenMaximize')}
           >
-            {screenMode === 'full' ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            {screenMode === 'full' ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </button>
           <button
             onClick={loadData}
             className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white active:scale-95 transition-transform"
             title="Refresh Data"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={15} />
           </button>
         </div>
       </div>
@@ -434,6 +550,17 @@ export default function Admin() {
           }`}
         >
           📋 Paste Links
+        </button>
+        <button
+          onClick={() => {
+            if (selectedDrama) startEditingDrama(selectedDrama);
+            else setActiveTabLocal('editDrama');
+          }}
+          className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
+            activeTab === 'editDrama' ? 'bg-blue-600 text-white shadow-md' : 'text-blue-400 hover:text-white'
+          }`}
+        >
+          ✏️ កែរឿង (Edit Drama)
         </button>
         <button
           onClick={() => setActiveTabLocal('addDrama')}
@@ -510,6 +637,12 @@ export default function Admin() {
             {selectedDrama && (
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
                 <button
+                  onClick={() => startEditingDrama(selectedDrama)}
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95"
+                >
+                  <Edit3 size={13} /> ✏️ កែព័ត៌មានរឿង
+                </button>
+                <button
                   onClick={() => setActiveTabLocal('addEpisode')}
                   className="px-2.5 py-1.5 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95"
                 >
@@ -537,6 +670,47 @@ export default function Admin() {
               </div>
             )}
           </div>
+
+          {/* Selected Drama Live Overview & Real-time Episode Counter Card */}
+          {selectedDrama && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-gray-900 via-purple-950/20 to-gray-900 border border-purple-500/20 flex gap-3 items-center shadow-lg">
+              <div className="relative w-14 h-20 rounded-xl overflow-hidden bg-black shrink-0 border border-white/10 shadow-md">
+                <img
+                  src={selectedDrama.posterUrl}
+                  alt={selectedDrama.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black text-white truncate">
+                    {selectedDrama.titleKm || selectedDrama.title}
+                  </h4>
+                  <button
+                    onClick={() => startEditingDrama(selectedDrama)}
+                    className="p-1 rounded bg-white/5 hover:bg-blue-600/30 text-blue-400 text-[10px]"
+                    title="Edit Drama"
+                  >
+                    <Edit3 size={11} />
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                  {selectedDrama.title}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-300 text-[10px] font-black tracking-wide">
+                    🎬 ចំនួនភាគសរុប: {selectedDrama.episodes?.length || 0} ភាគ
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold">
+                    Free: {(selectedDrama.episodes || []).filter((e) => e.isFree).length} ភាគ
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+                    Coins: {(selectedDrama.episodes || []).filter((e) => !e.isFree).length} ភាគ
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Search episodes */}
           <div className="flex items-center gap-2">
@@ -1202,6 +1376,139 @@ export default function Admin() {
           >
             រក្សាទុករឿងថ្មី (Save Drama Series)
           </button>
+        </form>
+      )}
+
+      {/* ================= TAB: EDIT DRAMA ================= */}
+      {activeTab === 'editDrama' && editingDrama && (
+        <form onSubmit={handleUpdateDrama} className="mt-4 space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <h3 className="text-sm font-extrabold text-blue-400 flex items-center gap-1.5">
+              <Edit3 size={16} /> កែសម្រួលព័ត៌មានរឿង (Edit Drama Details)
+            </h3>
+            <button
+              type="button"
+              onClick={() => setActiveTabLocal('manage')}
+              className="px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 hover:text-white text-xs"
+            >
+              ត្រឡប់ក្រោយ (Back)
+            </button>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">Title (English ចំណងជើងអង់គ្លេស)</label>
+            <input
+              type="text"
+              required
+              value={editingDrama.title}
+              onChange={(e) => setEditingDrama({ ...editingDrama, title: e.target.value })}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">Title (Khmer ចំណងជើងខ្មែរ)</label>
+            <input
+              type="text"
+              required
+              value={editingDrama.titleKm}
+              onChange={(e) => setEditingDrama({ ...editingDrama, titleKm: e.target.value })}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">Poster Image URL (Vertical 3:4)</label>
+            <input
+              type="url"
+              required
+              value={editingDrama.posterUrl}
+              onChange={(e) => setEditingDrama({ ...editingDrama, posterUrl: e.target.value })}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">Banner Backdrop Image URL (16:9)</label>
+            <input
+              type="url"
+              value={editingDrama.bannerUrl}
+              onChange={(e) => setEditingDrama({ ...editingDrama, bannerUrl: e.target.value })}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">Description (Khmer សេចក្តីសង្ខេប)</label>
+            <textarea
+              rows={3}
+              value={editingDrama.descriptionKm}
+              onChange={(e) => setEditingDrama({ ...editingDrama, descriptionKm: e.target.value })}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-gray-300">Genres (Comma separated)</label>
+              <input
+                type="text"
+                value={editingDrama.genres}
+                onChange={(e) => setEditingDrama({ ...editingDrama, genres: e.target.value })}
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-gray-300">Rating (ពិន្ទុ)</label>
+              <input
+                type="text"
+                value={editingDrama.rating}
+                onChange={(e) => setEditingDrama({ ...editingDrama, rating: e.target.value })}
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 pt-1">
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editingDrama.isVipOnly}
+                onChange={(e) => setEditingDrama({ ...editingDrama, isVipOnly: e.target.checked })}
+                className="rounded text-purple-600"
+              />
+              <span>រឿងសម្រាប់តែ VIP? (VIP Only)</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editingDrama.isFeatured}
+                onChange={(e) => setEditingDrama({ ...editingDrama, isFeatured: e.target.checked })}
+                className="rounded text-purple-600"
+              />
+              <span>ដាក់លើផ្ទាំង Banner មុខ? (Featured)</span>
+            </label>
+          </div>
+
+          <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300">
+            ℹ️ ចំនួនភាគបច្ចុប្បន្ន: <b>{editingDrama.episodes?.length || 0} ភាគ</b> (ប្រព័ន្ធនឹងចងចាំ និងរក្សាទុកស្វ័យប្រវត្តិ)
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="submit"
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg active:scale-95 transition-transform"
+            >
+              💾 រក្សាទុក និងចងចាំការកែសម្រួល (Save Changes)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTabLocal('manage')}
+              className="py-3 px-4 rounded-xl bg-white/10 text-gray-300 font-bold text-xs active:scale-95"
+            >
+              បោះបង់
+            </button>
+          </div>
         </form>
       )}
     </div>

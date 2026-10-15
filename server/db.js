@@ -28,20 +28,26 @@ class Database {
         this.data = JSON.parse(raw);
         if (!this.data.dramas || this.data.dramas.length === 0) {
           this.data.dramas = initialDramas;
-          this.save();
         }
       } catch (err) {
         console.error('Failed to parse db.json, re-initializing with seed data:', err);
         this.data = { dramas: initialDramas, users: {} };
-        this.save();
       }
     } else {
       this.data = {
         dramas: initialDramas,
         users: {}
       };
-      this.save();
     }
+
+    // Always ensure every drama has updated totalEpisodes matching episodes.length
+    if (Array.isArray(this.data.dramas)) {
+      for (const d of this.data.dramas) {
+        d.episodes = d.episodes || [];
+        d.totalEpisodes = d.episodes.length;
+      }
+    }
+    this.save();
   }
 
   save() {
@@ -54,37 +60,70 @@ class Database {
 
   // --- Dramas ---
   getDramas() {
+    if (Array.isArray(this.data.dramas)) {
+      for (const d of this.data.dramas) {
+        d.episodes = d.episodes || [];
+        d.totalEpisodes = d.episodes.length;
+      }
+    }
     return this.data.dramas;
   }
 
   getDramaById(id) {
-    return this.data.dramas.find((d) => d.id === id);
+    const drama = this.data.dramas.find((d) => d.id === id);
+    if (drama) {
+      drama.episodes = drama.episodes || [];
+      drama.totalEpisodes = drama.episodes.length;
+    }
+    return drama;
   }
 
   createDrama(drama) {
     const id = `drama-${Date.now()}`;
+    const episodes = drama.episodes || [];
     const newDrama = {
       id,
       ...drama,
-      views: '1.2K',
-      viewsNum: 1200,
-      likes: 120,
-      episodes: drama.episodes || []
+      views: drama.views || '1.2K',
+      viewsNum: drama.viewsNum || 1200,
+      likes: drama.likes || 120,
+      episodes,
+      totalEpisodes: episodes.length
     };
     this.data.dramas.unshift(newDrama);
     this.save();
     return newDrama;
   }
 
+  updateDrama(dramaId, dramaData) {
+    const index = this.data.dramas.findIndex((d) => d.id === dramaId);
+    if (index === -1) return null;
+    const existing = this.data.dramas[index];
+    const episodes = Array.isArray(dramaData.episodes) ? dramaData.episodes : (existing.episodes || []);
+    const updated = {
+      ...existing,
+      ...dramaData,
+      episodes,
+      totalEpisodes: episodes.length
+    };
+    this.data.dramas[index] = updated;
+    this.save();
+    return updated;
+  }
+
   addEpisode(dramaId, episodeData) {
     const drama = this.getDramaById(dramaId);
     if (!drama) return null;
+    drama.episodes = drama.episodes || [];
+    const epNum = Number(episodeData.episodeNumber) || (drama.episodes.length + 1);
     const epId = drama.episodes.length > 0 ? Math.max(...drama.episodes.map((e) => e.id)) + 1 : 1;
     const newEp = {
       id: epId,
-      ...episodeData
+      ...episodeData,
+      episodeNumber: epNum
     };
     drama.episodes.push(newEp);
+    drama.totalEpisodes = drama.episodes.length;
     this.save();
     return newEp;
   }
@@ -100,6 +139,7 @@ class Database {
         ...ep
       });
     }
+    drama.totalEpisodes = drama.episodes.length;
     this.save();
     return drama.episodes;
   }
@@ -107,7 +147,8 @@ class Database {
   setEpisodes(dramaId, episodes) {
     const drama = this.getDramaById(dramaId);
     if (!drama) return null;
-    drama.episodes = episodes;
+    drama.episodes = episodes || [];
+    drama.totalEpisodes = drama.episodes.length;
     this.save();
     return drama.episodes;
   }
@@ -119,6 +160,7 @@ class Database {
     drama.episodes = (drama.episodes || []).filter(
       (e) => e.id !== targetId && e.episodeNumber !== targetId
     );
+    drama.totalEpisodes = drama.episodes.length;
     this.save();
     return drama.episodes;
   }
@@ -127,6 +169,7 @@ class Database {
     const drama = this.getDramaById(dramaId);
     if (!drama) return null;
     drama.episodes = [];
+    drama.totalEpisodes = 0;
     this.save();
     return [];
   }
@@ -143,6 +186,7 @@ class Database {
       ...drama.episodes[index],
       ...episodeData
     };
+    drama.totalEpisodes = drama.episodes.length;
     this.save();
     return drama.episodes[index];
   }
@@ -153,6 +197,22 @@ class Database {
     this.data.dramas.splice(index, 1);
     this.save();
     return true;
+  }
+
+  importDatabase(dbJson) {
+    if (dbJson && Array.isArray(dbJson.dramas)) {
+      this.data.dramas = dbJson.dramas;
+      if (dbJson.users) {
+        this.data.users = { ...this.data.users, ...dbJson.users };
+      }
+      for (const d of this.data.dramas) {
+        d.episodes = d.episodes || [];
+        d.totalEpisodes = d.episodes.length;
+      }
+      this.save();
+      return true;
+    }
+    return false;
   }
 
   // --- Users ---

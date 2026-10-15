@@ -7,7 +7,9 @@ export default function DramaCard({ drama, rank = null, size = 'normal' }) {
   const { lang, t, openDrama } = useApp();
 
   const title = lang === 'km' && drama.titleKm ? drama.titleKm : drama.title;
-  const epCount = drama.totalEpisodes || drama.episodes?.length || 50;
+  const epCount = (drama.episodes && Array.isArray(drama.episodes))
+    ? drama.episodes.length
+    : (typeof drama.totalEpisodes === 'number' ? drama.totalEpisodes : (drama.episodes?.length || 0));
 
   const widthClass = size === 'large' ? 'w-44' : size === 'small' ? 'w-28' : 'w-32';
   const heightClass = size === 'large' ? 'h-64' : size === 'small' ? 'h-40' : 'h-48';

@@ -13,10 +13,16 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getDramas().then((data) => {
-      setDramas(data || []);
-      setLoading(false);
-    });
+    const fetchDramas = () => {
+      api.getDramas().then((data) => {
+        setDramas(data || []);
+        setLoading(false);
+      });
+    };
+    fetchDramas();
+    const handleUpdate = () => fetchDramas();
+    window.addEventListener('siengstudio_dramas_updated', handleUpdate);
+    return () => window.removeEventListener('siengstudio_dramas_updated', handleUpdate);
   }, []);
 
   const categories = [

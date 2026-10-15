@@ -267,12 +267,33 @@ app.put('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req, r
   res.json({ success: true, episode: updated });
 });
 
+// Admin: Update Drama Details
+app.put('/api/admin/dramas/:id', checkAdminPin, (req, res) => {
+  const updated = db.updateDrama(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Drama not found' });
+  res.json({ success: true, drama: updated });
+});
+
 // Admin: Delete Drama
 app.delete('/api/admin/dramas/:dramaId', checkAdminPin, (req, res) => {
   const { dramaId } = req.params;
   const deleted = db.deleteDrama(dramaId);
   if (!deleted) return res.status(404).json({ error: 'Drama not found' });
   res.json({ success: true, message: 'Drama deleted' });
+});
+
+// Admin: Export Database Backup JSON
+app.get('/api/admin/backup', checkAdminPin, (req, res) => {
+  res.setHeader('Content-Disposition', 'attachment; filename="siengstudio-backup.json"');
+  res.setHeader('Content-Type', 'application/json');
+  res.json(db.data);
+});
+
+// Admin: Import Database JSON
+app.post('/api/admin/import', checkAdminPin, (req, res) => {
+  const success = db.importDatabase(req.body);
+  if (!success) return res.status(400).json({ success: false, message: 'Invalid database payload' });
+  res.json({ success: true, message: 'Database imported successfully', totalDramas: db.data.dramas.length });
 });
 
 // Admin: Stats

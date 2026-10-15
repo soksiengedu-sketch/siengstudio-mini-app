@@ -32,12 +32,20 @@ export default function DramaDetail({ dramaId, onBack }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (dramaId) {
-      api.getDrama(dramaId, user?.id).then((data) => {
-        setDrama(data);
-        setLoading(false);
-      });
-    }
+    const fetchDrama = () => {
+      if (dramaId) {
+        api.getDrama(dramaId, user?.id).then((data) => {
+          if (data) {
+            setDrama(data);
+            setLoading(false);
+          }
+        });
+      }
+    };
+    fetchDrama();
+    const handleUpdate = () => fetchDrama();
+    window.addEventListener('siengstudio_dramas_updated', handleUpdate);
+    return () => window.removeEventListener('siengstudio_dramas_updated', handleUpdate);
   }, [dramaId, user?.id]);
 
   if (loading || !drama) {
@@ -187,9 +195,28 @@ export default function DramaDetail({ dramaId, onBack }) {
           <h2 className="text-sm font-extrabold text-white">
             {t('episodes')} ({episodes.length})
           </h2>
-          <span className="text-[11px] text-gray-400">
-            {lang === 'km' ? 'ភាគ 1-10 ឥតគិតថ្លៃ' : 'Ep 1-10 Free'}
-          </span>
+          {(() => {
+            const freeCount = episodes.filter((e) => e.isFree).length;
+            if (freeCount === 0) {
+              return (
+                <span className="text-[11px] text-amber-400 font-semibold">
+                  {lang === 'km' ? 'ត្រូវការដោះសោ' : 'Coin Unlock'}
+                </span>
+              );
+            }
+            if (freeCount === episodes.length) {
+              return (
+                <span className="text-[11px] text-emerald-400 font-semibold">
+                  {lang === 'km' ? 'ឥតគិតថ្លៃគ្រប់ភាគ' : 'All Free'}
+                </span>
+              );
+            }
+            return (
+              <span className="text-[11px] text-gray-300 font-semibold">
+                {lang === 'km' ? `ភាគ 1-${freeCount} ឥតគិតថ្លៃ` : `Ep 1-${freeCount} Free`}
+              </span>
+            );
+          })()}
         </div>
 
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2.5">
