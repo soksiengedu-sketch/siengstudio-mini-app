@@ -4,7 +4,7 @@ import { Home, Compass, Bookmark, Wallet, User } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
 export default function BottomNav() {
-  const { activeTab, setActiveTab, t } = useApp();
+  const { activeTab, setActiveTab, t, screenMode } = useApp();
 
   const tabs = [
     { id: 'home', label: t('home'), icon: Home },
@@ -17,9 +17,13 @@ export default function BottomNav() {
   // Don't display bottom nav if in full-screen watch mode
   if (activeTab === 'watch') return null;
 
+  const isCompact = screenMode === 'compact';
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c0d16]/95 backdrop-blur-lg border-t border-white/5 pb-safe">
-      <div className="w-full max-w-xl mx-auto px-4 py-2 flex items-center justify-around">
+    <nav className={`fixed bottom-0 left-0 right-0 z-40 bg-[#0c0d16]/95 backdrop-blur-lg border-t border-white/5 pb-safe transition-all duration-300 ${
+      isCompact ? 'max-w-md mx-auto md:rounded-b-[32px]' : ''
+    }`}>
+      <div className={`w-full ${isCompact ? 'max-w-md' : 'max-w-2xl'} mx-auto px-4 py-2 flex items-center justify-around`}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

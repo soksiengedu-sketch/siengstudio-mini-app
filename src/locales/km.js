@@ -66,5 +66,9 @@ export default {
   save: "រក្សាទុក",
   status: "ស្ថានភាព",
   ongoing: "កំពុងចាក់ផ្សាយ",
-  completed: "ចប់បរិបូណ៌"
+  completed: "ចប់បរិបូណ៌",
+  screenMaximize: "ពង្រីកពេញអេក្រង់",
+  screenMinimize: "បង្រួមអេក្រង់តូច",
+  fullScreen: "ពេញអេក្រង់",
+  compactScreen: "បង្រួមតូច"
 };

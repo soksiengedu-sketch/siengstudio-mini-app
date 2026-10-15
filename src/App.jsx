@@ -21,7 +21,8 @@ function MainApp() {
     activeTab,
     setActiveTab,
     currentDramaId,
-    currentEpisodeId
+    currentEpisodeId,
+    screenMode
   } = useApp();
 
   const [currentDrama, setCurrentDrama] = useState(null);
@@ -34,36 +35,56 @@ function MainApp() {
     }
   }, [currentDramaId]);
 
+  const isCompact = screenMode === 'compact';
+
   return (
-    <div className="min-h-screen min-h-[100dvh] w-full bg-[#0b0c13] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
-      {/* Top Header (hidden when watching full-screen reel player) */}
-      {activeTab !== 'watch' && activeTab !== 'admin' && <Header />}
+    <div
+      className={`min-h-screen min-h-[100dvh] w-full text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white transition-colors duration-300 ${
+        isCompact
+          ? 'bg-[#050608] md:py-6 items-center justify-start'
+          : 'bg-[#0b0c13]'
+      }`}
+    >
+      <div
+        className={`w-full flex flex-col transition-all duration-300 ${
+          isCompact
+            ? 'max-w-md mx-auto bg-[#0b0c13] min-h-screen md:min-h-[880px] md:rounded-[32px] md:border md:border-white/10 md:shadow-[0_0_60px_rgba(168,85,247,0.2)] overflow-x-hidden relative'
+            : 'flex-1'
+        }`}
+      >
+        {/* Top Header (hidden when watching full-screen reel player) */}
+        {activeTab !== 'watch' && activeTab !== 'admin' && <Header />}
 
-      {/* Main Content Area - Full screen width on Mobile & Wide resolution on PC */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-0 sm:px-4 md:px-6">
-        {activeTab === 'home' && <Home />}
-        {activeTab === 'detail' && (
-          <DramaDetail
-            dramaId={currentDramaId}
-            onBack={() => setActiveTab('home')}
-          />
-        )}
-        {activeTab === 'watch' && currentDrama && (
-          <ReelPlayer
-            drama={currentDrama}
-            initialEpId={currentEpisodeId}
-            onBack={() => setActiveTab('detail')}
-          />
-        )}
-        {activeTab === 'search' && <Search />}
-        {activeTab === 'library' && <Library />}
-        {activeTab === 'wallet' && <Wallet />}
-        {activeTab === 'profile' && <Profile />}
-        {activeTab === 'admin' && <Admin />}
-      </main>
+        {/* Main Content Area - Full screen width on Mobile & Wide resolution on PC */}
+        <main
+          className={`flex-1 w-full ${
+            isCompact ? 'px-0' : 'max-w-7xl mx-auto px-0 sm:px-4 md:px-6'
+          }`}
+        >
+          {activeTab === 'home' && <Home />}
+          {activeTab === 'detail' && (
+            <DramaDetail
+              dramaId={currentDramaId}
+              onBack={() => setActiveTab('home')}
+            />
+          )}
+          {activeTab === 'watch' && currentDrama && (
+            <ReelPlayer
+              drama={currentDrama}
+              initialEpId={currentEpisodeId}
+              onBack={() => setActiveTab('detail')}
+            />
+          )}
+          {activeTab === 'search' && <Search />}
+          {activeTab === 'library' && <Library />}
+          {activeTab === 'wallet' && <Wallet />}
+          {activeTab === 'profile' && <Profile />}
+          {activeTab === 'admin' && <Admin />}
+        </main>
 
-      {/* Bottom Navigation */}
-      <BottomNav />
+        {/* Bottom Navigation */}
+        <BottomNav />
+      </div>
 
       {/* Global Modals */}
       <CoinModal />

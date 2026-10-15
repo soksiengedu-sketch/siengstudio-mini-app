@@ -375,11 +375,29 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
           <button
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
-              setIsCinema(!isCinema);
+              haptic.light();
+              const nextCinema = !isCinema;
+              setIsCinema(nextCinema);
+              try {
+                const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : null;
+                if (nextCinema) {
+                  if (tg?.requestFullscreen) tg.requestFullscreen();
+                  else if (tg?.expand) tg.expand();
+                  if (typeof document !== 'undefined' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen();
+                  }
+                } else {
+                  if (tg?.exitFullscreen) tg.exitFullscreen();
+                  if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
+                    await document.exitFullscreen();
+                  }
+                }
+              } catch (err) {}
             }}
             className="p-2 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/10 active:scale-90"
+            title={isCinema ? t('screenMinimize') : t('screenMaximize')}
           >
             {isCinema ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>

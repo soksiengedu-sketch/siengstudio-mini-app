@@ -14,6 +14,72 @@ export const AppProvider = ({ children }) => {
   const [currentEpisodeId, setCurrentEpisodeId] = useState(null);
   const [playerMode, setPlayerMode] = useState('reel'); // 'reel' or 'cinema'
 
+  // Screen Resolution Mode: 'full' (Wide/Full-screen) or 'compact' (Phone Simulator)
+  const [screenMode, setScreenMode] = useState(() => {
+    try {
+      return localStorage.getItem('siengstudio_screen_mode') || 'full';
+    } catch (e) {
+      return 'full';
+    }
+  });
+
+  const [isFullscreen, setIsFullscreen] = useState(() => {
+    return Boolean(
+      (typeof document !== 'undefined' && document.fullscreenElement) ||
+      (typeof window !== 'undefined' && window.Telegram?.WebApp?.isFullscreen)
+    );
+  });
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(
+        Boolean(
+          document.fullscreenElement ||
+          window.Telegram?.WebApp?.isFullscreen
+        )
+      );
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, []);
+
+  const toggleScreenMode = async () => {
+    haptic.medium();
+    const nextMode = screenMode === 'full' ? 'compact' : 'full';
+    setScreenMode(nextMode);
+    try {
+      localStorage.setItem('siengstudio_screen_mode', nextMode);
+    } catch (e) {}
+
+    const tg = typeof window !== 'undefined' ? window.Telegram?.WebApp : null;
+
+    if (nextMode === 'full') {
+      if (tg && typeof tg.requestFullscreen === 'function') {
+        try { tg.requestFullscreen(); } catch (e) {}
+      } else if (tg && typeof tg.expand === 'function') {
+        try { tg.expand(); } catch (e) {}
+      }
+      if (typeof document !== 'undefined' && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (e) {}
+      }
+    } else {
+      if (tg && typeof tg.exitFullscreen === 'function') {
+        try { tg.exitFullscreen(); } catch (e) {}
+      }
+      if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
+        try {
+          await document.exitFullscreen();
+        } catch (e) {}
+      }
+    }
+  };
+
   // User State
   const [user, setUser] = useState(() => getTelegramUser());
   const [coins, setCoins] = useState(150); // Initial welcome bonus coins
@@ -269,7 +335,11 @@ export const AppProvider = ({ children }) => {
         isAdminAuthModalOpen,
         setIsAdminAuthModalOpen,
         pendingAdminTargetTab,
-        openAdmin
+        openAdmin,
+        screenMode,
+        setScreenMode,
+        toggleScreenMode,
+        isFullscreen
       }}
     >
       {children}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Coins, Gift, Crown, Globe, Plus, Film } from 'lucide-react';
+import { Coins, Gift, Crown, Globe, Plus, Film, Maximize2, Minimize2 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
 export default function Header() {
@@ -14,12 +14,14 @@ export default function Header() {
     setIsDailyModalOpen,
     hasCheckedInToday,
     setActiveTab,
-    openAdmin
+    openAdmin,
+    screenMode,
+    toggleScreenMode
   } = useApp();
 
   return (
-    <header className="sticky top-0 z-30 bg-[#0b0c13]/90 backdrop-blur-md border-b border-white/5 px-4 py-2.5">
-      <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-[#0b0c13]/90 backdrop-blur-md border-b border-white/5 px-3 sm:px-4 py-2.5">
+      <div className={`w-full ${screenMode === 'compact' ? 'max-w-md' : 'max-w-7xl'} mx-auto flex items-center justify-between`}>
       {/* Brand */}
       <div 
         className="flex items-center gap-2.5 cursor-pointer active:scale-95 transition-transform"
@@ -95,6 +97,34 @@ export default function Header() {
         >
           <Globe size={13} className="text-gray-400" />
           <span className="text-[11px] font-bold uppercase">{lang === 'km' ? 'KM' : 'EN'}</span>
+        </button>
+
+        {/* Screen Resolution Toggle: Minimize / Maximize */}
+        <button
+          onClick={toggleScreenMode}
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-xs font-bold active:scale-90 transition-all ${
+            screenMode === 'full'
+              ? 'bg-purple-500/15 border-purple-500/30 text-purple-300 hover:bg-purple-500/25 shadow-sm'
+              : 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25 shadow-sm'
+          }`}
+          title={screenMode === 'full' ? t('screenMinimize') : t('screenMaximize')}
+          aria-label={screenMode === 'full' ? t('screenMinimize') : t('screenMaximize')}
+        >
+          {screenMode === 'full' ? (
+            <>
+              <Minimize2 size={13} className="text-purple-400 flex-shrink-0" />
+              <span className="hidden sm:inline text-[10.5px]">
+                {t('compactScreen')}
+              </span>
+            </>
+          ) : (
+            <>
+              <Maximize2 size={13} className="text-cyan-400 flex-shrink-0" />
+              <span className="hidden sm:inline text-[10.5px]">
+                {t('fullScreen')}
+              </span>
+            </>
+          )}
         </button>
 
         {/* Quick + Add Drama Button */}

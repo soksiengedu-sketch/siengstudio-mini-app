@@ -66,5 +66,9 @@ export default {
   save: "Save",
   status: "Status",
   ongoing: "Ongoing",
-  completed: "Completed"
+  completed: "Completed",
+  screenMaximize: "Maximize Screen",
+  screenMinimize: "Minimize Screen",
+  fullScreen: "Full Screen",
+  compactScreen: "Compact"
 };

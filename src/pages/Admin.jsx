@@ -22,12 +22,14 @@ import {
   Clipboard,
   RefreshCw,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
 export default function Admin() {
-  const { setActiveTab, authenticatedAdminPin, adminInitialTab } = useApp();
+  const { setActiveTab, authenticatedAdminPin, adminInitialTab, screenMode, toggleScreenMode, t, lang } = useApp();
   const [dramas, setDramas] = useState([]);
   const [stats, setStats] = useState({ totalDramas: 0, totalEpisodes: 0, totalViews: 0 });
   const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
@@ -357,6 +359,17 @@ export default function Admin() {
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-md shadow-purple-900/40 active:scale-95 transition-all"
           >
             <Plus size={14} /> + បន្ថែមរឿងថ្មី
+          </button>
+          <button
+            onClick={toggleScreenMode}
+            className={`p-2 rounded-xl border text-xs active:scale-95 transition-all ${
+              screenMode === 'full'
+                ? 'bg-purple-500/15 border-purple-500/30 text-purple-300'
+                : 'bg-cyan-500/15 border-cyan-500/30 text-cyan-300'
+            }`}
+            title={screenMode === 'full' ? t('screenMinimize') : t('screenMaximize')}
+          >
+            {screenMode === 'full' ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
           <button
             onClick={loadData}
