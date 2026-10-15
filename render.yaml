@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: siengstudio
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PORT
+        value: 3000
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WEB_APP_URL
+        sync: false
+      - key: ADMIN_PIN
+        value: 88@48*
+      - key: BAKONG_ACCOUNT_ID
+        value: 855885688848@aclb
+      - key: MERCHANT_NAME
+        value: CHAN SOKSIENG
+      - key: MERCHANT_CITY
+        value: Phnom Penh

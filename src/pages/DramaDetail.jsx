@@ -1,0 +1,229 @@
+import React, { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
+import { api } from '../services/api';
+import {
+  ArrowLeft,
+  Play,
+  Bookmark,
+  Share2,
+  Star,
+  Eye,
+  Lock,
+  Crown,
+  Check,
+  Flame,
+  Info
+} from 'lucide-react';
+import { haptic, shareToTelegram } from '../services/telegram';
+
+export default function DramaDetail({ dramaId, onBack }) {
+  const {
+    t,
+    lang,
+    startWatching,
+    isEpisodeUnlocked,
+    isVip,
+    toggleFavorite,
+    favorites,
+    user
+  } = useApp();
+
+  const [drama, setDrama] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (dramaId) {
+      api.getDrama(dramaId, user?.id).then((data) => {
+        setDrama(data);
+        setLoading(false);
+      });
+    }
+  }, [dramaId, user?.id]);
+
+  if (loading || !drama) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-400">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const isFav = favorites.some((f) => f.id === drama.id);
+  const title = lang === 'km' && drama.titleKm ? drama.titleKm : drama.title;
+  const desc = lang === 'km' && drama.descriptionKm ? drama.descriptionKm : drama.description;
+  const episodes = drama.episodes || [];
+
+  return (
+    <div className="min-h-screen bg-[#0b0c13] pb-24">
+      {/* Backdrop Header */}
+      <div className="relative w-full h-72">
+        <img
+          src={drama.bannerUrl || drama.posterUrl}
+          alt={title}
+          className="w-full h-full object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b0c13] via-[#0b0c13]/60 to-black/30" />
+
+        {/* Back & Share Buttons */}
+        <div className="absolute top-0 left-0 right-0 pt-safe px-4 py-3 flex items-center justify-between z-10">
+          <button
+            onClick={() => {
+              haptic.light();
+              onBack();
+            }}
+            className="p-2 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/10 active:scale-90"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <button
+            onClick={() => {
+              haptic.light();
+              shareToTelegram(
+                `🎬 Watch "${title}" on SiengStudio:`,
+                `https://t.me/SiengStudioBot?startapp=drama_${drama.id}`
+              );
+            }}
+            className="p-2 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/10 active:scale-90"
+          >
+            <Share2 size={18} />
+          </button>
+        </div>
+
+        {/* Floating Poster & Info */}
+        <div className="absolute bottom-3 left-4 right-4 flex items-end gap-3.5">
+          <div className="w-24 h-36 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10 flex-shrink-0 bg-gray-900">
+            <img src={drama.posterUrl} alt={title} className="w-full h-full object-cover" />
+          </div>
+
+          <div className="flex-1 min-w-0 pb-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {drama.isVipOnly ? (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[9px] font-black uppercase flex items-center gap-0.5">
+                  <Crown size={9} className="fill-black" /> VIP
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[9px] font-bold">
+                  {t('free')}
+                </span>
+              )}
+              {drama.rating && (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white/10 text-amber-300 text-[10px] font-bold backdrop-blur-md">
+                  <Star size={10} className="fill-amber-400 text-amber-400" />
+                  {drama.rating}
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400">
+                {episodes.length} {t('ep')}
+              </span>
+            </div>
+
+            <h1 className="text-lg font-black text-white leading-tight line-clamp-2 mt-1.5 drop-shadow">
+              {title}
+            </h1>
+
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-300">
+              <span className="flex items-center gap-1">
+                <Eye size={12} className="text-gray-400" />
+                {drama.views || '850K'}
+              </span>
+              <span>•</span>
+              <span className="text-purple-400">{drama.status || t('ongoing')}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Actions: Play & Favorite */}
+      <div className="px-4 mt-3 flex items-center gap-3">
+        <button
+          onClick={() => {
+            const firstEp = episodes[0]?.id || 1;
+            startWatching(drama.id, firstEp);
+          }}
+          className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-transform"
+        >
+          <Play size={18} className="fill-white" />
+          {t('watchNow')} ({t('ep')} 1)
+        </button>
+
+        <button
+          onClick={() => toggleFavorite(drama)}
+          className={`p-3 rounded-xl border flex items-center justify-center transition-all active:scale-95 ${
+            isFav
+              ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+              : 'bg-white/5 border-white/10 text-white'
+          }`}
+        >
+          {isFav ? <Check size={20} /> : <Bookmark size={20} />}
+        </button>
+      </div>
+
+      {/* Genres */}
+      <div className="px-4 mt-4 flex items-center gap-1.5 flex-wrap">
+        {drama.genres?.map((g, i) => (
+          <span
+            key={i}
+            className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-gray-300 text-xs font-medium"
+          >
+            {g}
+          </span>
+        ))}
+      </div>
+
+      {/* Synopsis / Description */}
+      <div className="px-4 mt-4">
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+          <Info size={13} />
+          {lang === 'km' ? 'សេចក្តីសង្ខេប' : 'Synopsis'}
+        </h3>
+        <p className="text-xs text-gray-300 leading-relaxed font-normal">
+          {desc}
+        </p>
+      </div>
+
+      {/* Episode Selection Section */}
+      <section className="px-4 mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-extrabold text-white">
+            {t('episodes')} ({episodes.length})
+          </h2>
+          <span className="text-[11px] text-gray-400">
+            {lang === 'km' ? 'ភាគ 1-3 ឥតគិតថ្លៃ' : 'Ep 1-3 Free'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2.5">
+          {episodes.map((ep) => {
+            const unlocked = isEpisodeUnlocked(drama.id, ep);
+
+            return (
+              <button
+                key={ep.id}
+                onClick={() => {
+                  startWatching(drama.id, ep.id);
+                }}
+                className={`relative h-14 rounded-2xl flex flex-col items-center justify-center font-black text-xs transition-all active:scale-95 border ${
+                  unlocked
+                    ? 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+                    : 'bg-black/40 border-white/5 text-gray-500'
+                }`}
+              >
+                <span>{ep.episodeNumber || ep.id}</span>
+                <span className="text-[9px] font-normal text-gray-400">
+                  {unlocked ? (ep.isFree ? t('free') : 'Unlocked') : `${ep.coinPrice || 20} ${lang === 'km' ? 'កាក់' : 'C'}`}
+                </span>
+
+                {/* Lock Badge */}
+                {!unlocked && (
+                  <div className="absolute top-1.5 right-1.5 text-amber-400">
+                    <Lock size={11} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}

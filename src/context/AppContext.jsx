@@ -1,0 +1,261 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import en from '../locales/en';
+import km from '../locales/km';
+import { getTelegramUser, initTelegramApp, haptic, isTelegramWebApp } from '../services/telegram';
+import { api } from '../services/api';
+import confetti from 'canvas-confetti';
+
+const AppContext = createContext();
+
+export const AppProvider = ({ children }) => {
+  const [lang, setLang] = useState('km'); // Default to Khmer
+  const [activeTab, setActiveTab] = useState('home'); // home, search, library, wallet, profile, admin
+  const [currentDramaId, setCurrentDramaId] = useState(null);
+  const [currentEpisodeId, setCurrentEpisodeId] = useState(null);
+  const [playerMode, setPlayerMode] = useState('reel'); // 'reel' or 'cinema'
+
+  // User State
+  const [user, setUser] = useState(() => getTelegramUser());
+  const [coins, setCoins] = useState(150); // Initial welcome bonus coins
+  const [isVip, setIsVip] = useState(false);
+  const [vipTier, setVipTier] = useState(null); // 'lite', 'weekly', 'monthly'
+  const [unlockedEpisodes, setUnlockedEpisodes] = useState([]);
+  const [favorites, setFavorites] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [checkInStreak, setCheckInStreak] = useState(1);
+  const [hasCheckedInToday, setHasCheckedInToday] = useState(false);
+
+  const [authenticatedAdminPin, setAuthenticatedAdminPin] = useState('');
+
+  // Modals
+  const [isCoinModalOpen, setIsCoinModalOpen] = useState(false);
+  const [isDailyModalOpen, setIsDailyModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Translations helper
+  const translations = lang === 'km' ? km : en;
+  const t = (key) => translations[key] || key;
+
+  // Initialize Telegram WebApp
+  useEffect(() => {
+    initTelegramApp();
+    const tgUser = getTelegramUser();
+    setUser(tgUser);
+
+    // Sync with backend API
+    if (tgUser?.id) {
+      api.syncUser(tgUser).then((res) => {
+        if (res && res.user) {
+          setCoins(res.user.coins ?? 150);
+          setIsVip(Boolean(res.user.isVip));
+          setVipTier(res.user.vipTier || (res.user.isVip ? 'monthly' : null));
+          setUnlockedEpisodes(res.user.unlockedEpisodes || []);
+          setFavorites(res.user.favorites || []);
+          setHistory(res.user.history || []);
+          setCheckInStreak(res.user.checkInStreak || 1);
+          setHasCheckedInToday(Boolean(res.user.hasCheckedInToday));
+        }
+      });
+    }
+
+    // Check deep links if launched with start_param (e.g. ?tgWebAppStartParam=drama_1)
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const startParam = urlParams.get('tgWebAppStartParam') || urlParams.get('startapp');
+      if (startParam && startParam.startsWith('drama_')) {
+        const dId = startParam.replace('drama_', '');
+        setCurrentDramaId(dId);
+        setActiveTab('detail');
+      }
+    } catch (e) {}
+  }, []);
+
+  const switchLanguage = (newLang) => {
+    haptic.select();
+    setLang(newLang);
+    document.documentElement.lang = newLang;
+  };
+
+  const openDrama = (dramaId, episodeId = null) => {
+    haptic.light();
+    setCurrentDramaId(dramaId);
+    if (episodeId) {
+      setCurrentEpisodeId(episodeId);
+      setActiveTab('watch');
+    } else {
+      setActiveTab('detail');
+    }
+  };
+
+  const startWatching = (dramaId, episodeId) => {
+    haptic.medium();
+    setCurrentDramaId(dramaId);
+    setCurrentEpisodeId(episodeId);
+    setActiveTab('watch');
+  };
+
+  const isEpisodeUnlocked = (dramaId, episode) => {
+    if (isVip && vipTier !== 'lite') return true;
+    if (episode.isFree) return true;
+    const key = `${dramaId}:${episode.id}`;
+    return unlockedEpisodes.includes(key);
+  };
+
+  const unlockEpisode = async (dramaId, episode) => {
+    let cost = episode.coinPrice || 20;
+    // Lite VIP gets 20% discount on unlocks
+    if (isVip && vipTier === 'lite') {
+      cost = Math.max(1, Math.round(cost * 0.8));
+    }
+
+    if (coins < cost) {
+      haptic.error();
+      setIsCoinModalOpen(true);
+      return false;
+    }
+
+    haptic.success();
+    // Optimistic UI update
+    setCoins((prev) => prev - cost);
+    const key = `${dramaId}:${episode.id}`;
+    setUnlockedEpisodes((prev) => [...prev, key]);
+
+    // Backend sync
+    await api.unlockEpisode(user.id, dramaId, episode.id);
+    return true;
+  };
+
+  const toggleFavorite = async (drama) => {
+    haptic.light();
+    const exists = favorites.some((f) => f.id === drama.id);
+    let updated;
+    if (exists) {
+      updated = favorites.filter((f) => f.id !== drama.id);
+    } else {
+      updated = [...favorites, drama];
+    }
+    setFavorites(updated);
+    await api.toggleFavorite(user.id, drama.id);
+  };
+
+  const recordHistory = async (dramaId, episodeId, progressSec = 0) => {
+    const existingIndex = history.findIndex((h) => h.dramaId === dramaId);
+    let updated = [...history];
+    const item = { dramaId, episodeId, progressSec, updatedAt: new Date().toISOString() };
+    if (existingIndex >= 0) {
+      updated[existingIndex] = item;
+    } else {
+      updated.unshift(item);
+    }
+    setHistory(updated);
+    await api.updateHistory(user.id, dramaId, episodeId, progressSec);
+  };
+
+  const clearHistory = () => {
+    haptic.medium();
+    setHistory([]);
+  };
+
+  const triggerDailyCheckIn = async () => {
+    haptic.heavy();
+    const res = await api.dailyCheckIn(user.id);
+    if (res.success) {
+      setCoins((prev) => prev + res.reward);
+      setCheckInStreak(res.streak);
+      setHasCheckedInToday(true);
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {}
+      return { success: true, reward: res.reward, streak: res.streak };
+    }
+    return { success: false, message: res.message };
+  };
+
+  const topUpCoins = async (packageId, method) => {
+    haptic.success();
+    const res = await api.topUpCoins(user.id, packageId, method);
+    if (res.success) {
+      setCoins((prev) => prev + res.addedCoins);
+      setIsCoinModalOpen(false);
+      try {
+        confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
+      } catch (e) {}
+      return true;
+    }
+    return false;
+  };
+
+  const upgradeVip = async (tier) => {
+    haptic.success();
+    const res = await api.upgradeVip(user.id, tier);
+    if (res.success) {
+      setIsVip(true);
+      setVipTier(tier);
+      if (tier === 'lite') {
+        setCoins((prev) => prev + 200); // 200 instant bonus coins for Lite VIP
+      }
+      setIsCoinModalOpen(false);
+      try {
+        confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
+      } catch (e) {}
+      return true;
+    }
+    return false;
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        lang,
+        switchLanguage,
+        t,
+        activeTab,
+        setActiveTab,
+        currentDramaId,
+        setCurrentDramaId,
+        currentEpisodeId,
+        setCurrentEpisodeId,
+        playerMode,
+        setPlayerMode,
+        user,
+        coins,
+        setCoins,
+        isVip,
+        setIsVip,
+        vipTier,
+        setVipTier,
+        unlockedEpisodes,
+        favorites,
+        history,
+        checkInStreak,
+        hasCheckedInToday,
+        openDrama,
+        startWatching,
+        isEpisodeUnlocked,
+        unlockEpisode,
+        toggleFavorite,
+        recordHistory,
+        clearHistory,
+        triggerDailyCheckIn,
+        topUpCoins,
+        upgradeVip,
+        isCoinModalOpen,
+        setIsCoinModalOpen,
+        isDailyModalOpen,
+        setIsDailyModalOpen,
+        isShareModalOpen,
+        setIsShareModalOpen,
+        authenticatedAdminPin,
+        setAuthenticatedAdminPin
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => useContext(AppContext);
