@@ -232,6 +232,17 @@ app.post('/api/admin/episodes/batch', checkAdminPin, (req, res) => {
   res.json({ success: true, count: episodes.length, episodes: result });
 });
 
+// Admin: Set/Replace All Episodes of Drama
+app.put('/api/admin/dramas/:id/episodes', checkAdminPin, (req, res) => {
+  const { episodes } = req.body;
+  if (!Array.isArray(episodes)) {
+    return res.status(400).json({ error: 'episodes array is required' });
+  }
+  const result = db.setEpisodes(req.params.id, episodes);
+  if (!result) return res.status(404).json({ error: 'Drama not found' });
+  res.json({ success: true, count: episodes.length, episodes: result });
+});
+
 // Admin: Stats
 app.get('/api/admin/stats', checkAdminPin, (req, res) => {
   const dramas = db.getDramas();

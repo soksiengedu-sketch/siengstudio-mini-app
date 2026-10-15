@@ -104,6 +104,14 @@ class Database {
     return drama.episodes;
   }
 
+  setEpisodes(dramaId, episodes) {
+    const drama = this.getDramaById(dramaId);
+    if (!drama) return null;
+    drama.episodes = episodes;
+    this.save();
+    return drama.episodes;
+  }
+
   // --- Users ---
   getUser(telegramId) {
     const id = String(telegramId);
