@@ -392,9 +392,12 @@ export default function CoinModal() {
     setModalStep('select');
   };
 
-  const currentAccountId = (generatedKhqr?.accountId || '006963867@abaa').trim();
+  const currentAccountId = (generatedKhqr?.accountId || 'chan_soksieng@bkrt').trim();
   const isAbaBank = currentAccountId.toLowerCase().includes('aba');
-  const bankDisplayName = isAbaBank ? 'ABA Bank' : (currentAccountId.includes('aclb') ? 'ACLEDA Bank' : 'Bakong Bank');
+  const isBakong = currentAccountId.toLowerCase().includes('bkrt') || currentAccountId.toLowerCase().includes('bakong');
+  const bankDisplayName = isBakong
+    ? 'Bakong'
+    : (isAbaBank ? 'ABA Bank' : (currentAccountId.includes('aclb') ? 'ACLEDA Bank' : 'Bakong'));
   const formattedAccountNumber = isAbaBank && currentAccountId.startsWith('006963867')
     ? '006 963 867'
     : currentAccountId;
@@ -756,7 +759,6 @@ export default function CoinModal() {
                       }`}
                     >
                       <span>💵 USD ($)</span>
-                      <span className="text-[9px] opacity-80">(ABA)</span>
                     </button>
                     <button
                       type="button"
@@ -805,14 +807,18 @@ export default function CoinModal() {
                 </div>
 
                 <p className="text-[11px] text-gray-400 mt-2 leading-relaxed max-w-xs">
-                  បើកកម្មវិធី <strong>ABA Mobile</strong>, <strong>ACLEDA</strong>, ឬធនាគារណាក៏បាន ដើម្បីស្កេនបង់ប្រាក់
+                  បើកកម្មវិធី <strong>ABA Mobile</strong>, <strong>ACLEDA</strong>, <strong>Bakong</strong>, ឬធនាគារណាក៏បាន ដើម្បីស្កេនបង់ប្រាក់
                 </p>
 
-                {qrCurrency === 'USD' && isAbaBank && (
+                {isBakong ? (
+                  <p className="text-[10px] text-emerald-400/90 mt-1 font-medium">
+                    ✓ គណនី Bakong <strong>{currentAccountId}</strong> គាំទ្រការស្កេនពីគ្រប់ធនាគារទាំងអស់
+                  </p>
+                ) : qrCurrency === 'USD' && isAbaBank ? (
                   <p className="text-[10px] text-emerald-400/90 mt-1 font-medium">
                     ✓ គណនី ABA 006 963 867 ទទួលជាប្រាក់ដុល្លារ ($) ស្កេនបានភ្លាមៗ
                   </p>
-                )}
+                ) : null}
 
                 {/* Error Banner if not detected on Bakong */}
                 {paymentError && (

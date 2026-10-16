@@ -15,8 +15,8 @@ export const generatePaymentQR = async ({
   amountUsd = 1.5,
   currency = 'USD'
 }) => {
-  const accountId = (process.env.BAKONG_ACCOUNT_ID || '006963867@abaa').trim();
-  const merchantName = (process.env.MERCHANT_NAME || 'CHAN SOKSIENG').trim();
+  const accountId = (process.env.BAKONG_ACCOUNT_ID || 'chan_soksieng@bkrt').trim();
+  const merchantName = (process.env.MERCHANT_NAME || 'SOKSIENG CHAN').trim();
   const merchantCity = (process.env.MERCHANT_CITY || 'Phnom Penh').trim();
 
   const isKhr = currency === 'KHR';

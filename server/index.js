@@ -294,8 +294,8 @@ app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
 app.get('/api/bakong/config', (req, res) => {
   res.json({
     success: true,
-    accountId: (process.env.BAKONG_ACCOUNT_ID || '006963867@abaa').trim(),
-    merchantName: (process.env.MERCHANT_NAME || 'CHAN SOKSIENG').trim(),
+    accountId: (process.env.BAKONG_ACCOUNT_ID || 'chan_soksieng@bkrt').trim(),
+    merchantName: (process.env.MERCHANT_NAME || 'SOKSIENG CHAN').trim(),
     merchantCity: (process.env.MERCHANT_CITY || 'Phnom Penh').trim(),
     hasApiToken: Boolean(process.env.BAKONG_API_TOKEN)
   });
@@ -305,7 +305,7 @@ app.get('/api/bakong/config', (req, res) => {
 app.post('/api/bakong/verify-account', async (req, res) => {
   try {
     const { accountId } = req.body;
-    const target = accountId || process.env.BAKONG_ACCOUNT_ID || '006963867@abaa';
+    const target = accountId || process.env.BAKONG_ACCOUNT_ID || 'chan_soksieng@bkrt';
     const result = await verifyBakongAccount(target);
     res.json(result);
   } catch (err) {

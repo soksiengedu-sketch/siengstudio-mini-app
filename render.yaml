@@ -17,8 +17,8 @@ services:
       - key: ADMIN_PIN
         value: 88@48*
       - key: BAKONG_ACCOUNT_ID
-        value: 006963867@abaa
+        value: chan_soksieng@bkrt
       - key: MERCHANT_NAME
-        value: CHAN SOKSIENG
+        value: SOKSIENG CHAN
       - key: MERCHANT_CITY
         value: Phnom Penh
