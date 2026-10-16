@@ -26,6 +26,8 @@ export const generatePaymentQR = async ({
   const billNumber = `SS${Date.now().toString().slice(-6)}`;
   const expirationTimestamp = Date.now() + 15 * 60 * 1000; // 15 mins expiry
 
+  const bankDomain = accountId.includes('@') ? accountId.split('@')[1].trim().toLowerCase() : null;
+
   const optionalData = {
     currency: selectedCurrency,
     amount: amountToCharge,
@@ -34,6 +36,10 @@ export const generatePaymentQR = async ({
     terminalLabel: 'AppPay',
     expirationTimestamp
   };
+
+  if (bankDomain && bankDomain !== 'bakong') {
+    optionalData.acquiringBank = bankDomain;
+  }
 
   const individualInfo = new IndividualInfo(
     accountId,
