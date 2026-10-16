@@ -264,6 +264,7 @@ app.post('/api/payment/confirm-now', async (req, res) => {
     return res.json({
       success: true,
       paid: status.paid || false,
+      quotaExceeded: status.quotaExceeded || false,
       message: status.message || 'មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។ សូមរង់ចាំបន្តិច ឬពិនិត្យមើលក្នុង App ធនាគាររបស់អ្នក។'
     });
   } catch (err) {

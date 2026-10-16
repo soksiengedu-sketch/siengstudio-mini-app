@@ -266,11 +266,14 @@ export default function CoinModal() {
         if (checkRes && checkRes.paid) {
           clearInterval(pollIntervalRef.current);
           handleSuccessAction(checkRes);
+        } else if (checkRes && checkRes.quotaExceeded) {
+          clearInterval(pollIntervalRef.current);
+          setPaymentError(checkRes.message);
         }
       } catch (e) {
         console.warn('Polling error:', e);
       }
-    }, 2500);
+    }, 8000);
   };
 
   const handleSuccessAction = (result) => {

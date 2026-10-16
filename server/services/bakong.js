@@ -190,6 +190,17 @@ export const checkPaymentStatus = async (md5, fallbackData = {}) => {
       const data = await response.json();
       console.log(`[Bakong Check] NBC Response status=${response.status}:`, JSON.stringify(data));
 
+      if (data && (data.errorCode === 17 || (data.responseMessage && data.responseMessage.includes('limit of 100')))) {
+        console.warn('[Bakong Check] Daily limit exceeded (errorCode 17):', data.responseMessage);
+        return {
+          success: true,
+          paid: false,
+          quotaExceeded: true,
+          message: 'ប្រព័ន្ធ Bakong API បានពេញកូតាសាកល្បងប្រចាំថ្ងៃ (Daily limit 100 requests exceeded)។ កាក់នឹងត្រូវបាន Admin អនុម័តជូនភ្លាមៗ!',
+          payment
+        };
+      }
+
       if (isBakongTransactionSuccessful(data)) {
         if (!payment) {
           payment = {
