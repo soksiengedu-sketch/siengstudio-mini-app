@@ -1,10 +1,40 @@
 import { BakongKHQR, IndividualInfo, khqrData } from 'bakong-khqr';
 import QRCode from 'qrcode';
+import { db } from '../db.js';
 
 const khqr = new BakongKHQR();
 
 // Store active payment requests in memory (md5 -> paymentDetails)
 const activePayments = new Map();
+
+// Helper to reliably detect successful transaction from NBC Bakong API responses
+export const isBakongTransactionSuccessful = (data) => {
+  if (!data) return false;
+
+  // 1. Standard NBC responseCode 0
+  if (data.responseCode === 0 && data.data) return true;
+
+  // 2. Open API v1 standard format { status: { code: 0 }, data: { ... } }
+  if (data.status && typeof data.status === 'object' && data.status.code === 0 && data.data) return true;
+
+  // 3. Primitive numeric status === 0
+  if (data.status === 0 && data.data) return true;
+
+  // 4. Data object with transaction information (hash, fromAccountId, amount, externalRef)
+  if (data.data && typeof data.data === 'object') {
+    if (data.data.hash || data.data.fromAccountId || data.data.externalRef || data.data.instructionRef) {
+      return true;
+    }
+    if (data.data.status === 'SUCCESS' || data.data.status === 'COMPLETED' || data.data.status === 'PAID') {
+      return true;
+    }
+  }
+
+  // 5. Direct hash or acknowledgement without error
+  if (data.hash && !data.errorCode && !data.error) return true;
+
+  return false;
+};
 
 export const generatePaymentQR = async ({
   telegramId,
@@ -75,20 +105,33 @@ export const generatePaymentQR = async ({
     }
   }
 
-  // Track active payment
-  activePayments.set(md5, {
+  // Track active payment in memory AND persistent db
+  const paymentRecord = {
+    md5,
+    qr,
     telegramId,
     type,
     packageId,
     tier,
     amountKhr,
     amountUsd,
-    currency,
+    amount: amountToCharge,
+    currency: isKhr ? 'KHR' : 'USD',
     billNumber,
+    accountId,
+    merchantName,
     createdAt: Date.now(),
     expiresAt: expirationTimestamp,
-    isPaid: false
-  });
+    isPaid: false,
+    isProcessed: false
+  };
+
+  activePayments.set(md5, paymentRecord);
+  try {
+    db.savePendingPayment(md5, paymentRecord);
+  } catch (err) {
+    console.warn('Failed to persist payment to db:', err.message);
+  }
 
   return {
     success: true,
@@ -103,24 +146,38 @@ export const generatePaymentQR = async ({
   };
 };
 
-export const checkPaymentStatus = async (md5) => {
+export const checkPaymentStatus = async (md5, fallbackData = {}) => {
   if (!md5) return { success: false, message: 'Missing md5 parameter' };
 
-  const payment = activePayments.get(md5);
-  if (!payment) {
-    return { success: false, message: 'Payment record not found or expired' };
+  let payment = activePayments.get(md5) || db.getPayment(md5);
+
+  // If payment was lost on server restart, reconstruct with fallback client data
+  if (!payment && fallbackData && (fallbackData.telegramId || fallbackData.packageId)) {
+    payment = {
+      md5,
+      telegramId: fallbackData.telegramId,
+      type: fallbackData.type || 'coins',
+      packageId: fallbackData.packageId || 2,
+      tier: fallbackData.tier || 'monthly',
+      createdAt: Date.now(),
+      isPaid: false,
+      isProcessed: false
+    };
+    activePayments.set(md5, payment);
+    db.savePendingPayment(md5, payment);
   }
 
-  if (payment.isPaid) {
+  if (payment && payment.isPaid) {
     return { success: true, paid: true, payment };
   }
 
   const rawToken = process.env.BAKONG_API_TOKEN ? process.env.BAKONG_API_TOKEN.trim() : null;
 
-  // If developer token is configured, call official Bakong Open API
+  // If developer token is configured, call official NBC Bakong Open API
   if (rawToken) {
     try {
       const authHeader = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
+      console.log(`[Bakong Check] Querying NBC for MD5: ${md5}`);
       const response = await fetch('https://api-bakong.nbc.gov.kh/v1/check_transaction_by_md5', {
         method: 'POST',
         headers: {
@@ -131,8 +188,24 @@ export const checkPaymentStatus = async (md5) => {
       });
 
       const data = await response.json();
-      if (data && (data.responseCode === 0 || data.data?.status === 'SUCCESS' || data.status === 0 || data.data?.hash === md5)) {
+      console.log(`[Bakong Check] NBC Response status=${response.status}:`, JSON.stringify(data));
+
+      if (isBakongTransactionSuccessful(data)) {
+        if (!payment) {
+          payment = {
+            md5,
+            telegramId: fallbackData?.telegramId || 'user',
+            type: fallbackData?.type || 'coins',
+            packageId: fallbackData?.packageId || 2,
+            tier: fallbackData?.tier || 'monthly',
+            createdAt: Date.now()
+          };
+        }
         payment.isPaid = true;
+        payment.transactionData = data.data || data;
+        activePayments.set(md5, payment);
+        db.markPaymentPaid(md5, data.data || data);
+
         return { success: true, paid: true, payment, data };
       }
     } catch (err) {
@@ -144,9 +217,11 @@ export const checkPaymentStatus = async (md5) => {
 };
 
 export const markPaymentCompleted = (md5) => {
-  const payment = activePayments.get(md5);
+  let payment = activePayments.get(md5) || db.getPayment(md5);
   if (payment) {
     payment.isPaid = true;
+    activePayments.set(md5, payment);
+    db.markPaymentPaid(md5, { manualApproval: true, approvedAt: Date.now() });
     return payment;
   }
   return null;

@@ -257,7 +257,12 @@ export default function CoinModal() {
       }
 
       try {
-        const checkRes = await api.checkPaymentStatus(md5);
+        const checkRes = await api.checkPaymentStatus(md5, {
+          telegramId: user?.id || 'demo_user',
+          type: activeSubTab,
+          packageId: currentCoinPkg.id,
+          tier: currentVipPkg.id
+        });
         if (checkRes && checkRes.paid) {
           clearInterval(pollIntervalRef.current);
           handleSuccessAction(checkRes);
@@ -360,7 +365,12 @@ export default function CoinModal() {
     haptic.medium();
 
     try {
-      const checkRes = await api.checkPaymentStatus(generatedKhqr.md5);
+      const checkRes = await api.checkPaymentStatus(generatedKhqr.md5, {
+        telegramId: user?.id || 'demo_user',
+        type: activeSubTab,
+        packageId: currentCoinPkg.id,
+        tier: currentVipPkg.id
+      });
       if (checkRes && checkRes.paid) {
         setIsProcessing(false);
         handleSuccessAction(checkRes);

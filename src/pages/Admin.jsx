@@ -131,11 +131,29 @@ export default function Admin() {
   const [manualApproveLoading, setManualApproveLoading] = useState(false);
   const [manualApproveResult, setManualApproveResult] = useState(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [adminPayments, setAdminPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [checkingPaymentMd5, setCheckingPaymentMd5] = useState(null);
+
+  const loadAdminPayments = async () => {
+    setLoadingPayments(true);
+    try {
+      const res = await api.getAdminPayments(authenticatedAdminPin);
+      if (res && res.success) {
+        setAdminPayments(res.payments || []);
+      }
+    } catch (e) {
+      console.warn('Failed to load admin payments:', e);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
 
   const loadBakongConfig = async () => {
     try {
       const cfg = await api.getBakongConfig();
       if (cfg) setBakongConfig(cfg);
+      loadAdminPayments();
     } catch (e) {}
   };
 
@@ -188,11 +206,35 @@ export default function Admin() {
       setManualApproveResult(res);
       if (res && res.paid) {
         haptic.success();
+        loadAdminPayments();
       }
     } catch (e) {
       setManualApproveResult({ success: false, message: e.message });
     } finally {
       setManualApproveLoading(false);
+    }
+  };
+
+  const handleAdminVerifyPayment = async (md5, paymentObj) => {
+    setCheckingPaymentMd5(md5);
+    try {
+      const res = await api.checkPaymentStatus(md5, {
+        telegramId: paymentObj?.telegramId,
+        type: paymentObj?.type,
+        packageId: paymentObj?.packageId,
+        tier: paymentObj?.tier
+      });
+      if (res && res.paid) {
+        haptic.success();
+        alert('✅ បានផ្ទៀងផ្ទាត់ជោគជ័យជាមួយ NBC Bakong! កាក់/VIP ត្រូវបានបញ្ចូលរួចរាល់។');
+        loadAdminPayments();
+      } else {
+        alert(res?.message || '⚠️ មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។');
+      }
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setCheckingPaymentMd5(null);
     }
   };
 
@@ -2347,6 +2389,84 @@ export default function Admin() {
                     ? `✓ បានអនុម័ត និងបញ្ចូលកាក់ (${manualApproveResult.addedCoins || ''} កាក់) ដោយជោគជ័យ!`
                     : manualApproveResult.message}
                 </span>
+              </div>
+            )}
+          </div>
+
+          {/* Section 5: Recent Transactions & Live Status */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>📋</span>
+                <span>ប្រវត្តិប្រតិបត្តិការ KHQR ថ្មីៗ ({adminPayments.length}):</span>
+              </h4>
+              <button
+                onClick={loadAdminPayments}
+                disabled={loadingPayments}
+                className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5"
+              >
+                <RefreshCw size={11} className={loadingPayments ? 'animate-spin' : ''} />
+                <span>Refresh List</span>
+              </button>
+            </div>
+
+            {adminPayments.length === 0 ? (
+              <p className="text-xs text-gray-500 py-3 text-center">មិនទាន់មានប្រតិបត្តិការក្នុងប្រព័ន្ធនៅឡើយទេ</p>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                {adminPayments.map((p) => (
+                  <div
+                    key={p.md5}
+                    className="p-3 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-amber-300">#{p.billNumber || p.md5.slice(0, 8)}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.isProcessed || p.isPaid
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {p.isProcessed ? '✅ COMPLETED' : p.isPaid ? '✓ PAID' : '⏳ PENDING'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 uppercase">{p.type === 'coins' ? 'Coins' : 'VIP'}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-300 mt-1">
+                        User: <code className="text-amber-200">{p.telegramId}</code> • ចំនួន: <strong className="text-white">{p.currency === 'USD' ? `$${p.amount}` : `${p.amount?.toLocaleString()} ៛`}</strong>
+                      </p>
+                      <p className="text-[10px] font-mono text-gray-500 break-all mt-0.5">MD5: {p.md5}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => handleAdminVerifyPayment(p.md5, p)}
+                        disabled={checkingPaymentMd5 === p.md5}
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/60 border border-rose-500/40 text-rose-200 font-bold text-[11px] flex items-center gap-1"
+                      >
+                        {checkingPaymentMd5 === p.md5 ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        <span>ពិនិត្យ NBC Live</span>
+                      </button>
+
+                      {!p.isProcessed && (
+                        <button
+                          onClick={async () => {
+                            setManualMd5(p.md5);
+                            const res = await api.approveManualPayment(p.md5, authenticatedAdminPin);
+                            setManualApproveResult(res);
+                            if (res && res.paid) {
+                              haptic.success();
+                              loadAdminPayments();
+                            }
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1"
+                        >
+                          <Check size={12} />
+                          <span>Approve</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

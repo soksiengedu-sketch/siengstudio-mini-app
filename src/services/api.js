@@ -199,12 +199,12 @@ export const api = {
     }
   },
 
-  async checkPaymentStatus(md5) {
+  async checkPaymentStatus(md5, fallbackData = {}) {
     try {
       const res = await fetch(`${API_BASE}/payment/check-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ md5 })
+        body: JSON.stringify({ md5, ...fallbackData })
       });
       return await res.json();
     } catch (err) {
@@ -231,6 +231,17 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
         body: JSON.stringify({ md5 })
+      });
+      return await res.json();
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  },
+
+  async getAdminPayments(adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/payments`, {
+        headers: { 'x-admin-pin': adminPin }
       });
       return await res.json();
     } catch (err) {

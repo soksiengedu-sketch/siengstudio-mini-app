@@ -193,24 +193,30 @@ app.post('/api/payment/generate-khqr', async (req, res) => {
 // 2. Real-time Payment Status Checker (Polling / Webhook)
 app.post('/api/payment/check-status', async (req, res) => {
   try {
-    const { md5 } = req.body;
-    const status = await checkPaymentStatus(md5);
+    const { md5, telegramId, type, packageId, tier } = req.body;
+    const status = await checkPaymentStatus(md5, { telegramId, type, packageId, tier });
 
     if (status.paid && status.payment && !status.payment.isProcessed) {
       status.payment.isProcessed = true;
-      const { telegramId, type, packageId, tier } = status.payment;
-      if (type === 'coins') {
+      db.markPaymentProcessed(md5);
+
+      const targetTelegramId = status.payment.telegramId || telegramId;
+      const targetType = status.payment.type || type || 'coins';
+      const targetPkgId = status.payment.packageId || packageId;
+      const targetTier = status.payment.tier || tier;
+
+      if (targetType === 'coins') {
         const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-        const addedCoins = packageCoinsMap[packageId] || 345;
-        const updated = db.topUpCoins(telegramId, addedCoins);
-        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
-      } else if (type === 'vip') {
-        const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
-        if (tier === 'lite') {
-          db.topUpCoins(telegramId, 200);
+        const addedCoins = packageCoinsMap[targetPkgId] || 345;
+        const updated = db.topUpCoins(targetTelegramId, addedCoins);
+        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type: targetType });
+      } else if (targetType === 'vip') {
+        const vipResult = db.upgradeVip(targetTelegramId, targetTier || 'monthly');
+        if (targetTier === 'lite') {
+          db.topUpCoins(targetTelegramId, 200);
         }
-        const updatedUser = db.getUser(telegramId);
-        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+        const updatedUser = db.getUser(targetTelegramId);
+        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type: targetType });
       }
     }
 
@@ -223,36 +229,42 @@ app.post('/api/payment/check-status', async (req, res) => {
 // 3. User Payment Verification Request (Strict Check with NBC Bakong)
 app.post('/api/payment/confirm-now', async (req, res) => {
   try {
-    const { md5 } = req.body;
+    const { md5, telegramId, type, packageId, tier } = req.body;
     if (!md5) {
       return res.status(400).json({ success: false, paid: false, message: 'Missing transaction identifier (md5)' });
     }
 
-    const status = await checkPaymentStatus(md5);
+    const status = await checkPaymentStatus(md5, { telegramId, type, packageId, tier });
 
     if (status.paid && status.payment && !status.payment.isProcessed) {
       status.payment.isProcessed = true;
-      const { telegramId, type, packageId, tier } = status.payment;
-      if (type === 'coins') {
+      db.markPaymentProcessed(md5);
+
+      const targetTelegramId = status.payment.telegramId || telegramId;
+      const targetType = status.payment.type || type || 'coins';
+      const targetPkgId = status.payment.packageId || packageId;
+      const targetTier = status.payment.tier || tier;
+
+      if (targetType === 'coins') {
         const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-        const addedCoins = packageCoinsMap[packageId] || 345;
-        const updated = db.topUpCoins(telegramId, addedCoins);
-        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
-      } else if (type === 'vip') {
-        const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
-        if (tier === 'lite') {
-          db.topUpCoins(telegramId, 200);
+        const addedCoins = packageCoinsMap[targetPkgId] || 345;
+        const updated = db.topUpCoins(targetTelegramId, addedCoins);
+        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type: targetType });
+      } else if (targetType === 'vip') {
+        const vipResult = db.upgradeVip(targetTelegramId, targetTier || 'monthly');
+        if (targetTier === 'lite') {
+          db.topUpCoins(targetTelegramId, 200);
         }
-        const updatedUser = db.getUser(telegramId);
-        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+        const updatedUser = db.getUser(targetTelegramId);
+        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type: targetType });
       }
     }
 
     // Payment has not arrived or is not verified on Bakong network:
     return res.json({
       success: true,
-      paid: false,
-      message: 'មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។ សូមរង់ចាំបន្តិច ឬពិនិត្យមើលក្នុង App ធនាគាររបស់អ្នក។'
+      paid: status.paid || false,
+      message: status.message || 'មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។ សូមរង់ចាំបន្តិច ឬពិនិត្យមើលក្នុង App ធនាគាររបស់អ្នក។'
     });
   } catch (err) {
     res.status(500).json({ success: false, paid: false, message: err.message });
@@ -269,6 +281,7 @@ app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
 
     if (!payment.isProcessed) {
       payment.isProcessed = true;
+      db.markPaymentProcessed(md5);
       const { telegramId, type, packageId, tier } = payment;
       if (type === 'coins') {
         const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
@@ -285,6 +298,16 @@ app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
       }
     }
     res.json({ success: true, paid: true, message: 'Payment already approved' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin Get All Payments List
+app.get('/api/admin/payments', checkAdminPin, (req, res) => {
+  try {
+    const payments = db.getAllPayments();
+    res.json({ success: true, payments });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

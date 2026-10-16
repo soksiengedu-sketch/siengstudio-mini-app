@@ -12,7 +12,8 @@ class Database {
   constructor() {
     this.data = {
       dramas: [],
-      users: {}
+      users: {},
+      payments: {}
     };
     this.init();
   }
@@ -31,13 +32,18 @@ class Database {
         }
       } catch (err) {
         console.error('Failed to parse db.json, re-initializing with seed data:', err);
-        this.data = { dramas: initialDramas, users: {} };
+        this.data = { dramas: initialDramas, users: {}, payments: {} };
       }
     } else {
       this.data = {
         dramas: initialDramas,
-        users: {}
+        users: {},
+        payments: {}
       };
+    }
+
+    if (!this.data.payments) {
+      this.data.payments = {};
     }
 
     // Always ensure every drama has updated totalEpisodes matching episodes.length
@@ -495,6 +501,58 @@ class Database {
       topDramas,
       trend7Days
     };
+  }
+
+  // --- Bakong / Payment Management ---
+  savePendingPayment(md5, paymentData) {
+    if (!this.data.payments) this.data.payments = {};
+    this.data.payments[md5] = {
+      ...paymentData,
+      isPaid: paymentData.isPaid || false,
+      isProcessed: paymentData.isProcessed || false,
+      createdAt: paymentData.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+    this.save();
+    return this.data.payments[md5];
+  }
+
+  getPayment(md5) {
+    if (!this.data.payments) this.data.payments = {};
+    return this.data.payments[md5] || null;
+  }
+
+  markPaymentPaid(md5, transactionData = null) {
+    if (!this.data.payments) this.data.payments = {};
+    const payment = this.data.payments[md5];
+    if (payment) {
+      payment.isPaid = true;
+      payment.paidAt = Date.now();
+      if (transactionData) payment.transactionData = transactionData;
+      this.save();
+      return payment;
+    }
+    return null;
+  }
+
+  markPaymentProcessed(md5) {
+    if (!this.data.payments) this.data.payments = {};
+    const payment = this.data.payments[md5];
+    if (payment) {
+      payment.isProcessed = true;
+      payment.processedAt = Date.now();
+      this.save();
+      return payment;
+    }
+    return null;
+  }
+
+  getAllPayments() {
+    if (!this.data.payments) this.data.payments = {};
+    return Object.entries(this.data.payments).map(([md5, data]) => ({
+      md5,
+      ...data
+    })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 }
 
