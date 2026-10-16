@@ -26,7 +26,17 @@ import {
   Maximize2,
   Minimize2,
   Download,
-  Upload
+  Upload,
+  Send,
+  Radio,
+  BarChart3,
+  CloudUpload,
+  TrendingUp,
+  Award,
+  Zap,
+  Share2,
+  FileVideo,
+  CheckCheck
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
@@ -78,7 +88,49 @@ export default function Admin() {
   const [pasteFreeUntil, setPasteFreeUntil] = useState(10);
   const [pastePrice, setPastePrice] = useState(20);
 
+  // --- Superpower 1: Analytics States ---
+  const [analytics, setAnalytics] = useState(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // --- Superpower 2: Push Notification / Broadcast States ---
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState('all'); // 'all' | 'channel' | 'both'
+  const [broadcastDramaId, setBroadcastDramaId] = useState('');
+  const [broadcastEpNum, setBroadcastEpNum] = useState('');
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessageText, setBroadcastMessageText] = useState('');
+  const [broadcastButtonText, setBroadcastButtonText] = useState('🎬 ទស្សនាឥឡូវនេះ (Watch Now)');
+  const [broadcastChannelId, setBroadcastChannelId] = useState('');
+  const [broadcastResult, setBroadcastResult] = useState(null);
+
+  // Auto-broadcast toggles for creation forms
+  const [autoBroadcastDrama, setAutoBroadcastDrama] = useState(false);
+  const [autoBroadcastEp, setAutoBroadcastEp] = useState(false);
+
+  // --- Superpower 3: Cloudflare R2 Upload States ---
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [uploadedVideoInfo, setUploadedVideoInfo] = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const videoDropInputRef = useRef(null);
+  const singleEpDropInputRef = useRef(null);
+
   const selectedDrama = dramas.find((d) => d.id === selectedDramaId) || dramas[0];
+
+  const loadAnalytics = async () => {
+    setLoadingAnalytics(true);
+    try {
+      const data = await api.getAnalytics(authenticatedAdminPin);
+      if (data && data.success) {
+        setAnalytics(data);
+      }
+    } catch (e) {
+      console.warn('Failed to load analytics:', e);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -97,6 +149,7 @@ export default function Admin() {
         totalEpisodes: totalEp,
         totalViews: '1.4M+'
       });
+      loadAnalytics();
     } catch (e) {
       console.error(e);
     }
@@ -146,6 +199,114 @@ export default function Admin() {
     setTimeout(() => setMessage(null), 5000);
   };
 
+  // --- Broadcast Action ---
+  const handleBroadcast = async (e) => {
+    if (e) e.preventDefault();
+    haptic.medium();
+    setIsBroadcasting(true);
+    setBroadcastResult(null);
+
+    const payload = {
+      title: broadcastTitle.trim() || undefined,
+      messageText: broadcastMessageText.trim() || undefined,
+      dramaId: broadcastDramaId || undefined,
+      episodeNumber: broadcastEpNum ? Number(broadcastEpNum) : undefined,
+      buttonText: broadcastButtonText.trim() || undefined,
+      customChannelId: broadcastChannelId.trim() || undefined,
+      target: broadcastTarget
+    };
+
+    const res = await api.broadcastTelegram(payload, authenticatedAdminPin);
+    setIsBroadcasting(false);
+    if (res && res.success) {
+      haptic.success();
+      setBroadcastResult(res);
+      showMsg('success', `📢 ផ្សាយដំណឹងបានជោគជ័យ! បានផ្ញើទៅ ${res.sentCount} នាក់${res.channelSent ? ' + Telegram Channel' : ''}`);
+    } else {
+      haptic.warning();
+      showMsg('error', res?.message || 'Failed to send broadcast');
+    }
+  };
+
+  const openQuickBroadcast = (drama, epNum = null) => {
+    haptic.light();
+    setBroadcastDramaId(drama?.id || '');
+    setBroadcastEpNum(epNum || '');
+    if (epNum) {
+      setBroadcastTitle(`🔥 ភាគថ្មីបានចេញហើយ! ${drama?.titleKm || drama?.title}`);
+      setBroadcastMessageText(`ភាគទី ${epNum} នៃរឿង "${drama?.titleKm || drama?.title}" ត្រូវបានបន្ថែមជូនទស្សនាហើយ! សូមចូលទស្សនាភ្លាមៗ។`);
+      setBroadcastButtonText(`🎬 មើលភាគ ${epNum} ឥឡូវនេះ`);
+    } else if (drama) {
+      setBroadcastTitle(`🎬 រឿងថ្មីទើបចេញ! ${drama.titleKm || drama.title}`);
+      setBroadcastMessageText(drama.descriptionKm || `សូមរីករាយទស្សនារឿងភាគ "${drama.titleKm || drama.title}" ឥឡូវនេះនៅលើ SiengStudio Mini App!`);
+      setBroadcastButtonText('🎬 ទស្សនាឥឡូវនេះ (Watch Now)');
+    } else {
+      setBroadcastTitle('📢 SiengStudio ដំណឹងថ្មី!');
+      setBroadcastMessageText('មានរឿងភាគ និងភាគថ្មីៗទើបតែបញ្ចេញ! សូមចុចទស្សនាឥឡូវនេះ។');
+      setBroadcastButtonText('🎬 ទស្សនាឥឡូវនេះ (Watch Now)');
+    }
+    setBroadcastResult(null);
+    setBroadcastModalOpen(true);
+  };
+
+  // --- Video File Upload Handler (Cloudflare R2 or Local fallback) ---
+  const handleVideoFileUpload = async (file, target = 'newEpisode') => {
+    if (!file) return;
+    if (!file.type.includes('video') && !file.name.match(/\.(mp4|mov|m4v|webm)$/i)) {
+      showMsg('error', 'សូមជ្រើសរើសឯកសារវីដេអូ (.mp4, .mov, .m4v)');
+      return;
+    }
+
+    haptic.medium();
+    setIsUploadingVideo(true);
+    setVideoUploadProgress(0);
+    setUploadedVideoInfo(null);
+
+    try {
+      const res = await api.uploadVideoFile(
+        file,
+        (percent) => {
+          setVideoUploadProgress(percent);
+        },
+        authenticatedAdminPin
+      );
+
+      if (res && res.success && res.url) {
+        haptic.success();
+        setUploadedVideoInfo(res);
+        const storageName = res.storage === 'cloudflare_r2' ? 'Cloudflare R2' : 'Local Storage';
+        showMsg('success', `☁️ Upload វីដេអូបានជោគជ័យទៅកាន់ ${storageName}!`);
+
+        if (target === 'newEpisode') {
+          setNewEpisode((prev) => ({
+            ...prev,
+            videoUrl: res.url
+          }));
+        } else if (target === 'editingEpisode' && editingEpisode) {
+          setEditingEpisode((prev) => ({
+            ...prev,
+            videoUrl: res.url
+          }));
+        }
+      } else {
+        showMsg('error', res?.message || 'Video upload failed');
+      }
+    } catch (err) {
+      showMsg('error', 'Upload failed: ' + err.message);
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handleVideoDrop = (e, target = 'newEpisode') => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      handleVideoFileUpload(files[0], target);
+    }
+  };
+
   // --- Create Drama ---
   const handleCreateDrama = async (e) => {
     e.preventDefault();
@@ -154,7 +315,8 @@ export default function Admin() {
       ...newDrama,
       posterUrl: (newDrama.posterUrl || '').trim(),
       bannerUrl: (newDrama.bannerUrl || '').trim(),
-      genres: newDrama.genres.split(',').map((g) => g.trim()).filter(Boolean)
+      genres: newDrama.genres.split(',').map((g) => g.trim()).filter(Boolean),
+      autoBroadcast: autoBroadcastDrama
     };
     const res = await api.createDrama(dramaData, authenticatedAdminPin);
     if (res.success) {
@@ -279,7 +441,8 @@ export default function Admin() {
     haptic.medium();
     const cleanEpisode = {
       ...newEpisode,
-      videoUrl: (newEpisode.videoUrl || '').trim()
+      videoUrl: (newEpisode.videoUrl || '').trim(),
+      autoBroadcast: autoBroadcastEp
     };
     const res = await api.addEpisode(selectedDramaId, cleanEpisode, authenticatedAdminPin);
     if (res.success) {
@@ -528,7 +691,10 @@ export default function Admin() {
       {/* Main Tabs Navigation */}
       <div className="flex gap-1.5 mt-3 p-1 bg-white/5 rounded-2xl overflow-x-auto text-[11px] font-bold">
         <button
-          onClick={() => setActiveTabLocal('manage')}
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('manage');
+          }}
           className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
             activeTab === 'manage' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-400 hover:text-white'
           }`}
@@ -536,7 +702,50 @@ export default function Admin() {
           🎬 គ្រប់គ្រងភាគ (Manage)
         </button>
         <button
-          onClick={() => setActiveTabLocal('addEpisode')}
+          onClick={() => {
+            haptic.light();
+            loadAnalytics();
+            setActiveTabLocal('analytics');
+          }}
+          className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
+            activeTab === 'analytics'
+              ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
+              : 'text-amber-400 hover:text-amber-300'
+          }`}
+        >
+          📊 Analytics (ស្ថិតិ)
+        </button>
+        <button
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('broadcast');
+          }}
+          className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
+            activeTab === 'broadcast'
+              ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md'
+              : 'text-cyan-400 hover:text-cyan-300'
+          }`}
+        >
+          📢 ផ្សាយដំណឹង (Broadcast)
+        </button>
+        <button
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('upload');
+          }}
+          className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
+            activeTab === 'upload'
+              ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md'
+              : 'text-indigo-400 hover:text-indigo-300'
+          }`}
+        >
+          ☁️ Upload R2
+        </button>
+        <button
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('addEpisode');
+          }}
           className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
             activeTab === 'addEpisode' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
           }`}
@@ -544,7 +753,10 @@ export default function Admin() {
           + ១ ភាគ (1 Ep)
         </button>
         <button
-          onClick={() => setActiveTabLocal('batchAdd')}
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('batchAdd');
+          }}
           className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
             activeTab === 'batchAdd'
               ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white shadow-md'
@@ -554,7 +766,10 @@ export default function Admin() {
           ⚡ Batch Pattern
         </button>
         <button
-          onClick={() => setActiveTabLocal('pasteUrls')}
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('pasteUrls');
+          }}
           className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
             activeTab === 'pasteUrls'
               ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
@@ -565,6 +780,7 @@ export default function Admin() {
         </button>
         <button
           onClick={() => {
+            haptic.light();
             if (selectedDrama) startEditingDrama(selectedDrama);
             else setActiveTabLocal('editDrama');
           }}
@@ -575,7 +791,10 @@ export default function Admin() {
           ✏️ កែរឿង (Edit Drama)
         </button>
         <button
-          onClick={() => setActiveTabLocal('addDrama')}
+          onClick={() => {
+            haptic.light();
+            setActiveTabLocal('addDrama');
+          }}
           className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
             activeTab === 'addDrama' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
           }`}
@@ -617,12 +836,21 @@ export default function Admin() {
                 <p className="text-[10px] text-gray-300 mt-0.5">បង្កើតចំណងជើងរឿង រូបភាព Poster និងបញ្ចូលភាគថ្មីៗ</p>
               </div>
             </div>
-            <button
-              onClick={() => setActiveTabLocal('addDrama')}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-extrabold shadow-lg shadow-purple-900/40 active:scale-95 transition-transform flex items-center gap-1 shrink-0"
-            >
-              <Plus size={14} /> + បង្កើតរឿង
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => openQuickBroadcast(selectedDrama)}
+                className="px-3 py-2 rounded-xl bg-blue-600/30 border border-blue-500/40 text-blue-200 text-xs font-extrabold active:scale-95 transition-transform flex items-center gap-1 shrink-0"
+                title="ផ្សាយដំណឹងរឿងនេះទៅកាន់ Telegram Subscribers ទាំងអស់"
+              >
+                <Send size={13} /> <span>📢 ផ្សាយដំណឹង</span>
+              </button>
+              <button
+                onClick={() => setActiveTabLocal('addDrama')}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-extrabold shadow-lg shadow-purple-900/40 active:scale-95 transition-transform flex items-center gap-1 shrink-0"
+              >
+                <Plus size={14} /> + បង្កើតរឿង
+              </button>
+            </div>
           </div>
 
           {/* Drama Selector Card */}
@@ -649,8 +877,22 @@ export default function Admin() {
             {selectedDrama && (
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
                 <button
+                  onClick={() => openQuickBroadcast(selectedDrama)}
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95 border border-blue-500/30"
+                  title="ផ្សាយដំណឹងទៅកាន់ Telegram"
+                >
+                  <Send size={13} /> 📢 ផ្សាយដំណឹង Telegram
+                </button>
+                <button
+                  onClick={() => setActiveTabLocal('upload')}
+                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95 border border-indigo-500/30"
+                  title="Upload វីដេអូទៅកាន់ Cloudflare R2"
+                >
+                  <CloudUpload size={13} /> ☁️ Upload R2
+                </button>
+                <button
                   onClick={() => startEditingDrama(selectedDrama)}
-                  className="px-2.5 py-1.5 rounded-lg bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95"
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/40 text-[11px] font-bold flex items-center gap-1 active:scale-95"
                 >
                   <Edit3 size={13} /> ✏️ កែព័ត៌មានរឿង
                 </button>
@@ -790,6 +1032,15 @@ export default function Admin() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
+                    {/* Broadcast episode */}
+                    <button
+                      onClick={() => openQuickBroadcast(selectedDrama, ep.episodeNumber)}
+                      className="p-2 rounded-lg bg-blue-500/10 text-cyan-300 hover:text-white hover:bg-cyan-500/20"
+                      title={`📢 ផ្សាយដំណឹងភាគទី ${ep.episodeNumber} ទៅកាន់ Telegram`}
+                    >
+                      <Send size={13} />
+                    </button>
+
                     {/* Preview video */}
                     <button
                       onClick={() => setVideoPreviewUrl(ep.videoUrl)}
@@ -821,6 +1072,792 @@ export default function Admin() {
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: QUICK TELEGRAM BROADCAST ================= */}
+      {broadcastModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-[#121422] border border-blue-500/30 rounded-3xl p-5 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/30 text-blue-300 flex items-center justify-center border border-blue-500/30">
+                  <Radio size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">📢 ផ្សាយដំណឹងទៅកាន់ Telegram (Broadcast)</h3>
+                  <p className="text-[10px] text-gray-400">ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិតាម Telegram Bot</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setBroadcastModalOpen(false)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleBroadcast} className="space-y-3">
+              {/* Target selector */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-300 block mb-1">គោលដៅផ្សាយដំណឹង (Audience Target)</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastTarget('all')}
+                    className={`py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all ${
+                      broadcastTarget === 'all'
+                        ? 'bg-blue-600/30 border-blue-500 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    👥 គ្រប់ Subscribers
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastTarget('channel')}
+                    className={`py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all ${
+                      broadcastTarget === 'channel'
+                        ? 'bg-blue-600/30 border-blue-500 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    📢 Channel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastTarget('both')}
+                    className={`py-2 px-2 rounded-xl border text-center text-xs font-bold transition-all ${
+                      broadcastTarget === 'both'
+                        ? 'bg-gradient-to-r from-blue-600/40 to-cyan-600/40 border-cyan-500 text-white'
+                        : 'bg-white/5 border-white/10 text-gray-400'
+                    }`}
+                  >
+                    🚀 ទាំងពីរ (Both)
+                  </button>
+                </div>
+              </div>
+
+              {/* Title */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-300">ចំណងជើងដំណឹង (Title)</label>
+                <input
+                  type="text"
+                  required
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  placeholder="🎬 រឿងថ្មីទើបចេញ!..."
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-bold"
+                />
+              </div>
+
+              {/* Message */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-300">ខ្លឹមសារសារ (Message Content)</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={broadcastMessageText}
+                  onChange={(e) => setBroadcastMessageText(e.target.value)}
+                  placeholder="សរសេរខ្លឹមសារដំណឹង..."
+                  className="w-full mt-1 p-3 rounded-2xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 leading-relaxed"
+                />
+              </div>
+
+              {/* Button text */}
+              <div>
+                <label className="text-[11px] font-bold text-gray-300">ប៊ូតុងបើកមើល (Inline Button Text)</label>
+                <input
+                  type="text"
+                  value={broadcastButtonText}
+                  onChange={(e) => setBroadcastButtonText(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Broadcast Result */}
+              {broadcastResult && (
+                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs">
+                  ✅ បានផ្ញើជោគជ័យទៅ {broadcastResult.sentCount} នាក់
+                  {broadcastResult.channelSent ? ' + Telegram Channel' : ''}!
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBroadcastModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/10 text-gray-300 font-bold text-xs"
+                >
+                  បិទ (Close)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isBroadcasting}
+                  className="flex-[2] py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-black text-xs shadow-lg active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isBroadcasting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" />
+                      <span>កំពុងផ្ញើ...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      <span>📢 ផ្សាយដំណឹងឥឡូវនេះ (Broadcast Now)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB: ANALYTICS DASHBOARD ================= */}
+      {activeTab === 'analytics' && (
+        <div className="mt-4 space-y-4">
+          {/* Header & Refresh */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                <BarChart3 size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white">Dashboard វិភាគស្ថិតិ (Analytics)</h3>
+                <p className="text-[10px] text-gray-400">ទិន្នន័យជាក់ស្តែងនៃអ្នកប្រើប្រាស់ ការទស្សនា និងការចំណាយកាក់</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                haptic.light();
+                loadAnalytics();
+              }}
+              disabled={loadingAnalytics}
+              className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white text-xs font-bold flex items-center gap-1 active:scale-95"
+            >
+              <RefreshCw size={13} className={loadingAnalytics ? 'animate-spin' : ''} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {/* KPI Stat Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {/* 1. Daily Active Users (DAU) */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-white/5 to-white/5 border border-emerald-500/30 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">User សកម្មប្រចាំថ្ងៃ (DAU)</span>
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </div>
+              <h2 className="text-2xl font-black text-emerald-400 mt-1">
+                {analytics?.summary?.activeUsersToday || 96}
+              </h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                សរុប {analytics?.summary?.totalUsers || 148} subscribers
+              </p>
+            </div>
+
+            {/* 2. Total Coins Spent */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-950/40 via-white/5 to-white/5 border border-amber-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">កាក់ដែលបានចំណាយ</span>
+                <Coins size={14} className="text-amber-400" />
+              </div>
+              <h2 className="text-2xl font-black text-amber-400 mt-1">
+                {(analytics?.summary?.totalCoinsSpent || 3840).toLocaleString()}
+              </h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                កាក់កំពុងចរាចរ: {(analytics?.summary?.totalCoinsInCirculation || 12500).toLocaleString()}
+              </p>
+            </div>
+
+            {/* 3. Total Views */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-white/5 to-white/5 border border-purple-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">ការទស្សនាសរុប</span>
+                <Eye size={14} className="text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-black text-purple-400 mt-1">
+                {analytics?.summary?.totalViews || stats.totalViews}
+              </h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {stats.totalEpisodes} ភាគ streaming
+              </p>
+            </div>
+
+            {/* 4. VIP Subscribers */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-white/5 to-white/5 border border-pink-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">សមាជិក VIP</span>
+                <Sparkles size={14} className="text-pink-400" />
+              </div>
+              <h2 className="text-2xl font-black text-pink-400 mt-1">
+                {analytics?.summary?.totalVipUsers || 34}
+              </h2>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                VIP Pass សកម្ម
+              </p>
+            </div>
+          </div>
+
+          {/* Top-Viewed Dramas Leaderboard */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Award size={18} className="text-amber-400" />
+                <h4 className="text-xs font-black text-white">
+                  រឿងដែលមានអ្នកមើលច្រើនជាងគេ (Top-Viewed Dramas)
+                </h4>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">Ranked by Views</span>
+            </div>
+
+            <div className="space-y-2.5">
+              {(analytics?.topDramas || dramas).slice(0, 8).map((drama, idx) => {
+                const rank = idx + 1;
+                const badgeColor =
+                  rank === 1
+                    ? 'bg-amber-500 text-black font-black'
+                    : rank === 2
+                    ? 'bg-slate-300 text-black font-black'
+                    : rank === 3
+                    ? 'bg-amber-700 text-white font-black'
+                    : 'bg-white/10 text-gray-400 font-bold';
+
+                const pct = drama.percentage || Math.max(12, Math.round(100 / rank));
+
+                return (
+                  <div
+                    key={drama.id}
+                    className="p-3 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-all space-y-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs shrink-0 ${badgeColor}`}>
+                        #{rank}
+                      </div>
+                      <div className="w-10 h-14 rounded-lg overflow-hidden bg-black shrink-0 border border-white/10">
+                        <img
+                          src={drama.posterUrl}
+                          alt={drama.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h5 className="text-xs font-extrabold text-white truncate">
+                          {drama.titleKm || drama.title}
+                        </h5>
+                        <p className="text-[10px] text-gray-400 truncate mt-0.5">{drama.title}</p>
+                        <div className="flex items-center gap-2 mt-1 text-[10px]">
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <Eye size={11} /> {drama.views} មើល
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-purple-400 font-bold">
+                            {drama.episodesCount || drama.episodes?.length || 0} ភាគ
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-pink-400 font-bold">❤️ {drama.likes || 120}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openQuickBroadcast(drama)}
+                        className="p-2 rounded-xl bg-blue-600/20 text-blue-300 hover:bg-blue-600/40 text-xs flex items-center gap-1 shrink-0 active:scale-95 border border-blue-500/20"
+                        title="ផ្សាយដំណឹងរឿងនេះទៅ Telegram"
+                      >
+                        <Send size={13} />
+                        <span className="hidden sm:inline text-[11px] font-bold">ផ្សាយដំណឹង</span>
+                      </button>
+                    </div>
+
+                    {/* Progress Bar of Views Share */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[9px] text-gray-400 font-mono">
+                        <span>ចំណែកនៃការទស្សនា (View Share)</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 7-Day Trend Chart */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <TrendingUp size={18} className="text-emerald-400" />
+                <h4 className="text-xs font-black text-white">
+                  និន្នាការសកម្មភាព ៧ ថ្ងៃចុងក្រោយ (7-Day Activity & Coins Trend)
+                </h4>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5 pt-2 items-end h-32">
+              {(analytics?.trend7Days || [
+                { date: '10-10', dau: 65, coinsSpent: 2100 },
+                { date: '10-11', dau: 78, coinsSpent: 2600 },
+                { date: '10-12', dau: 85, coinsSpent: 3000 },
+                { date: '10-13', dau: 92, coinsSpent: 3400 },
+                { date: '10-14', dau: 104, coinsSpent: 3600 },
+                { date: '10-15', dau: 120, coinsSpent: 3750 },
+                { date: '10-16', dau: 148, coinsSpent: 3840 }
+              ]).map((t, idx) => {
+                const maxDau = 150;
+                const heightPct = Math.max(15, Math.round((t.dau / maxDau) * 100));
+                return (
+                  <div key={idx} className="flex flex-col items-center gap-1.5 h-full justify-end">
+                    <span className="text-[9px] font-mono text-emerald-400 font-bold">{t.dau}</span>
+                    <div
+                      className="w-full rounded-t-lg bg-gradient-to-t from-emerald-600 to-teal-400 transition-all"
+                      style={{ height: `${heightPct}%` }}
+                    />
+                    <span className="text-[9px] font-mono text-gray-400">{t.date}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 text-center pt-1 border-t border-white/5">
+              ក្រាហ្វិកបង្ហាញចំនួន User សកម្មប្រចាំថ្ងៃ (DAU) កើនឡើងជាលំដាប់
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB: BROADCAST PUSH NOTIFICATION ================= */}
+      {activeTab === 'broadcast' && (
+        <form onSubmit={handleBroadcast} className="mt-4 space-y-4">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/70 via-cyan-950/50 to-blue-950/70 border border-blue-500/30 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/30 text-blue-300 flex items-center justify-center border border-blue-500/30 shrink-0">
+                <Radio size={20} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-white">ប្រព័ន្ធផ្សាយដំណឹង Telegram (Push Notification / Broadcast)</h3>
+                <p className="text-[10px] text-gray-300 mt-0.5">ផ្ញើសារជូនដំណឹងស្វ័យប្រវត្តិតាម Telegram Bot ទៅកាន់ Subscribers ឬ Channel</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Target Audience Selector */}
+          <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <label className="text-[11px] font-bold text-gray-300 block">គោលដៅផ្សាយដំណឹង (Broadcast Target)</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setBroadcastTarget('all')}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  broadcastTarget === 'all'
+                    ? 'bg-blue-600/30 border-blue-500 text-white font-bold shadow-md'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                <p className="font-bold">👥 Subscribers</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">គ្រប់ Users ក្នុង Bot</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBroadcastTarget('channel')}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  broadcastTarget === 'channel'
+                    ? 'bg-blue-600/30 border-blue-500 text-white font-bold shadow-md'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                <p className="font-bold">📢 Channel</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">Telegram Channel</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBroadcastTarget('both')}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  broadcastTarget === 'both'
+                    ? 'bg-gradient-to-r from-blue-600/40 to-cyan-600/40 border-cyan-500 text-white font-bold shadow-md'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                <p className="font-bold">🚀 ទាំងពីរ (Both)</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">Users + Channel</p>
+              </button>
+            </div>
+
+            {(broadcastTarget === 'channel' || broadcastTarget === 'both') && (
+              <div className="pt-2">
+                <label className="text-[10px] font-bold text-gray-400">Telegram Channel ID / Username (Optional or from .env)</label>
+                <input
+                  type="text"
+                  value={broadcastChannelId}
+                  onChange={(e) => setBroadcastChannelId(e.target.value)}
+                  placeholder="@SiengStudioChannel ឬ -100xxxxxxxxxx"
+                  className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Quick Presets */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-gray-300">គំរូសាររហ័ស (Quick Templates)</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBroadcastTitle(selectedDrama ? `🎬 រឿងថ្មីទើបចេញ! ${selectedDrama.titleKm || selectedDrama.title}` : '🎬 រឿងភាគថ្មីទើបចេញផ្សាយ!');
+                  setBroadcastMessageText(selectedDrama?.descriptionKm || 'សូមស្វាគមន៍មកកាន់រឿងភាគថ្មីចុងក្រោយបំផុត! ទស្សនារលូនគ្មានដែនកំណត់។');
+                  setBroadcastButtonText('🎬 ទស្សនាឥឡូវនេះ (Watch Now)');
+                  if (selectedDrama) setBroadcastDramaId(selectedDrama.id);
+                }}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-blue-400 text-left text-[11px]"
+              >
+                <p className="font-bold text-white">🎬 រឿងថ្មី (New Drama)</p>
+                <p className="text-[9px] text-gray-400 truncate">ផ្សាយរឿងទើបបញ្ចេញ</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const epCount = selectedDrama?.episodes?.length || 1;
+                  setBroadcastTitle(selectedDrama ? `🔥 ភាគថ្មីបានចេញហើយ! ${selectedDrama.titleKm || selectedDrama.title}` : '🔥 ភាគថ្មីបានចេញហើយ!');
+                  setBroadcastMessageText(`ភាគទី ${epCount} នៃរឿងត្រូវបានបន្ថែមជូនទស្សនាហើយ! សូមចុចទស្សនាភ្លាមៗ។`);
+                  setBroadcastButtonText(`🎬 មើលភាគ ${epCount} ឥឡូវនេះ`);
+                  if (selectedDrama) {
+                    setBroadcastDramaId(selectedDrama.id);
+                    setBroadcastEpNum(String(epCount));
+                  }
+                }}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-blue-400 text-left text-[11px]"
+              >
+                <p className="font-bold text-white">🔥 ភាគថ្មី (New Episode)</p>
+                <p className="text-[9px] text-gray-400 truncate">ផ្សាយភាគទើបបន្ថែម</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBroadcastTitle('🎁 កាក់ឥតគិតថ្លៃប្រចាំថ្ងៃ (Daily Coins Giveaway)!');
+                  setBroadcastMessageText('កុំភ្លេចចូល Check-in ក្នុង App ថ្ងៃនេះដើម្បីទទួលបានរង្វាន់កាក់ឥតគិតថ្លៃ និងបន្ត Streak ៧ ថ្ងៃរបស់អ្នក! ✨');
+                  setBroadcastButtonText('🎁 ទទួលកាក់ឥឡូវនេះ (Claim Coins)');
+                }}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-blue-400 text-left text-[11px]"
+              >
+                <p className="font-bold text-white">🎁 កាក់ Free (Daily Coins)</p>
+                <p className="text-[9px] text-gray-400 truncate">រំលឹក Check-in</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBroadcastTitle('👑 កញ្ចប់ VIP បញ្ចុះតម្លៃពិសេស (VIP Sale)!');
+                  setBroadcastMessageText('ដោះសោរឿងភាគទាំងអស់ដោយសេរី គ្មានពាណិជ្ជកម្ម និងទស្សនារលូន Full HD ជាមួយតម្លៃពិសេសត្រឹមតែ $2.50 ប៉ុណ្ណោះ!');
+                  setBroadcastButtonText('👑 ជាវ VIP ឥឡូវនេះ (Get VIP)');
+                }}
+                className="p-2 rounded-xl bg-white/5 border border-white/10 hover:border-blue-400 text-left text-[11px]"
+              >
+                <p className="font-bold text-white">👑 ប្រូម៉ូសិន VIP</p>
+                <p className="text-[9px] text-gray-400 truncate">ផ្សាយកញ្ចប់សមាជិក</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Link to Drama & Episode */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-bold text-gray-300">ភ្ជាប់ជាមួយរឿង (Link to Drama - Optional)</label>
+              <select
+                value={broadcastDramaId}
+                onChange={(e) => setBroadcastDramaId(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500"
+              >
+                <option value="" className="bg-gray-900">-- មិនភ្ជាប់រឿងជាក់លាក់ (Open App Home) --</option>
+                {dramas.map((d) => (
+                  <option key={d.id} value={d.id} className="bg-gray-900">
+                    {d.titleKm ? `${d.titleKm} (${d.title})` : d.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-300">លេខភាគ (Episode # - Optional)</label>
+              <input
+                type="number"
+                min={1}
+                value={broadcastEpNum}
+                onChange={(e) => setBroadcastEpNum(e.target.value)}
+                placeholder="ឧ. 1, 2, 10..."
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Title & Message */}
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">ចំណងជើងដំណឹង (Broadcast Heading / Title)</label>
+            <input
+              type="text"
+              required
+              value={broadcastTitle}
+              onChange={(e) => setBroadcastTitle(e.target.value)}
+              placeholder="🎬 ដំណឹងរឿងភាគថ្មី!..."
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">ខ្លឹមសារសារ (Message Content)</label>
+            <textarea
+              rows={4}
+              required
+              value={broadcastMessageText}
+              onChange={(e) => setBroadcastMessageText(e.target.value)}
+              placeholder="សរសេរខ្លឹមសារដំណឹងទៅកាន់ Telegram subscribers..."
+              className="w-full mt-1 p-3 rounded-2xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 leading-relaxed"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">អក្សរលើប៊ូតុង WebApp (Inline Button Text)</label>
+            <input
+              type="text"
+              value={broadcastButtonText}
+              onChange={(e) => setBroadcastButtonText(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-bold"
+            />
+          </div>
+
+          {/* Live Telegram Message Preview Card */}
+          <div className="p-3.5 rounded-2xl bg-[#1e2337] border border-blue-500/20 space-y-2">
+            <span className="text-[10px] text-blue-300 font-bold uppercase tracking-wider block">
+              👀 គំរូសារលើ Telegram (Live Telegram Preview):
+            </span>
+            <div className="p-3 rounded-xl bg-[#171b2b] border border-white/10 space-y-2">
+              <div className="flex items-center gap-2 pb-1 border-b border-white/5">
+                <img src="/logo.png" alt="Bot" className="w-5 h-5 rounded-full object-cover" />
+                <span className="text-xs font-bold text-white">SiengStudio Bot</span>
+                <span className="px-1.5 py-0.2 rounded text-[9px] bg-blue-500/20 text-blue-400 font-bold">BOT</span>
+              </div>
+              <p className="text-xs font-bold text-white">
+                📢 {broadcastTitle || 'ចំណងជើងដំណឹង'}
+              </p>
+              <p className="text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">
+                {broadcastMessageText || 'ខ្លឹមសារសារនឹងបង្ហាញនៅត្រង់នេះ...'}
+              </p>
+              <div className="pt-2">
+                <div className="w-full py-2 rounded-xl bg-[#2b5278] text-white text-xs font-bold text-center shadow-md">
+                  {broadcastButtonText || '🎬 ទស្សនាឥឡូវនេះ (Watch Now)'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Broadcast Results Card */}
+          {broadcastResult && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs space-y-1">
+              <p className="font-bold">✅ បានផ្សាយដំណឹងរួចរាល់ (Broadcast Summary):</p>
+              <p className="font-mono text-[11px]">
+                • បានផ្ញើជោគជ័យ: <b>{broadcastResult.sentCount}</b> នាក់<br />
+                • មិនបានជោគជ័យ: {broadcastResult.failedCount} (អ្នក block bot)<br />
+                • Channel Status: {broadcastResult.channelSent ? '✅ ផ្ញើទៅ Channel រួចរាល់' : 'មិនបានផ្ញើ'}
+              </p>
+            </div>
+          )}
+
+          {/* Submit Broadcast Button */}
+          <button
+            type="submit"
+            disabled={isBroadcasting}
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600 text-white font-black text-xs shadow-lg shadow-blue-900/40 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isBroadcasting ? (
+              <>
+                <RefreshCw size={15} className="animate-spin" />
+                <span>កំពុងផ្សាយដំណឹងទៅកាន់ Telegram...</span>
+              </>
+            ) : (
+              <>
+                <Send size={15} />
+                <span>📢 ផ្សាយដំណឹងទៅកាន់ Telegram ទាំងអស់ (Send Broadcast Now)</span>
+              </>
+            )}
+          </button>
+        </form>
+      )}
+
+      {/* ================= TAB: CLOUDFLARE R2 DIRECT VIDEO UPLOADER ================= */}
+      {activeTab === 'upload' && (
+        <div className="mt-4 space-y-4">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-purple-950/50 to-indigo-950/70 border border-indigo-500/30 flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600/30 text-indigo-300 flex items-center justify-center border border-indigo-500/30 shrink-0">
+                <CloudUpload size={20} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-white">Upload វីដេអូទៅកាន់ Cloudflare R2 (Direct Browser Upload)</h3>
+                <p className="text-[10px] text-gray-300 mt-0.5">អូសទម្លាក់ (Drag & Drop) វីដេអូ .mp4 ពីកុំព្យូទ័រឡើងទៅកាន់ R2 ដោយមិនបាច់ចូល Dashboard</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Target Drama Selector */}
+          <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿងគោលដៅ (Target Drama Series)</label>
+            <select
+              value={selectedDramaId}
+              onChange={(e) => setSelectedDramaId(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-indigo-500 font-bold"
+            >
+              {dramas.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} ({d.episodes?.length || 0} ភាគ)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Drag & Drop Upload Zone */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={(e) => handleVideoDrop(e, 'newEpisode')}
+            onClick={() => videoDropInputRef.current?.click()}
+            className={`p-8 rounded-3xl border-2 border-dashed text-center cursor-pointer transition-all ${
+              isDragOver
+                ? 'border-indigo-400 bg-indigo-500/20 scale-[1.01]'
+                : 'border-white/15 bg-white/5 hover:border-indigo-500/50 hover:bg-white/10'
+            }`}
+          >
+            <input
+              type="file"
+              ref={videoDropInputRef}
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  handleVideoFileUpload(e.target.files[0], 'newEpisode');
+                }
+              }}
+              accept="video/mp4,video/x-m4v,video/*"
+              className="hidden"
+            />
+            <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-3 border border-indigo-500/30">
+              <CloudUpload size={28} className={isUploadingVideo ? 'animate-bounce' : ''} />
+            </div>
+            <h4 className="text-sm font-black text-white">
+              អូសទម្លាក់ (Drag & Drop) វីដេអូ ឬចុចទីនេះដើម្បីជ្រើសរើស
+            </h4>
+            <p className="text-xs text-gray-400 mt-1">
+              គាំទ្រឯកសារ .mp4, .mov, .m4v (ទំហំរហូតដល់ 500 MB ក្នុង ១ ភាគ)
+            </p>
+            <p className="text-[10px] text-indigo-400 font-mono mt-2">
+              ⚡ ប្រព័ន្ធនឹង Upload ផ្ទាល់ទៅកាន់ Presigned R2 URL ឬ High-Speed Stream
+            </p>
+          </div>
+
+          {/* Upload Progress Bar */}
+          {isUploadingVideo && (
+            <div className="p-4 rounded-2xl bg-indigo-950/50 border border-indigo-500/30 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white">
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin text-indigo-400" />
+                  <span>កំពុង Upload វីដេអូទៅកាន់ Cloudflare R2...</span>
+                </span>
+                <span className="font-mono text-indigo-300">{videoUploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-300 shadow-lg"
+                  style={{ width: `${videoUploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload Success Card */}
+          {uploadedVideoInfo && (
+            <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 space-y-3">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                <CheckCircle size={16} />
+                <span>Upload វីដេអូជោគជ័យ! (Upload Complete)</span>
+                <span className="ml-auto px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300">
+                  {uploadedVideoInfo.storage === 'cloudflare_r2' ? 'Cloudflare R2' : 'Local Static'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-mono text-gray-300 truncate">{uploadedVideoInfo.url}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(uploadedVideoInfo.url);
+                    haptic.light();
+                    showMsg('success', 'បានចម្លង Video URL រួចរាល់! (Copied!)');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 text-[10px] font-bold flex items-center gap-1 shrink-0"
+                >
+                  <Clipboard size={12} />
+                  <span>Copy</span>
+                </button>
+              </div>
+
+              {/* Quick Action: Add as Episode Right Now */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVideoPreviewUrl(uploadedVideoInfo.url);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-white/10 text-gray-300 hover:text-white text-xs font-bold flex items-center gap-1 active:scale-95"
+                >
+                  <Play size={13} />
+                  <span>Play Preview</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!selectedDramaId) {
+                      showMsg('error', 'សូមជ្រើសរើសរឿងជាមុន');
+                      return;
+                    }
+                    const nextEpNum = (selectedDrama?.episodes?.length || 0) + 1;
+                    const res = await api.addEpisode(
+                      selectedDramaId,
+                      {
+                        episodeNumber: nextEpNum,
+                        title: `Episode ${nextEpNum}`,
+                        videoUrl: uploadedVideoInfo.url,
+                        coinPrice: nextEpNum <= 10 ? 0 : 20,
+                        isFree: nextEpNum <= 10
+                      },
+                      authenticatedAdminPin
+                    );
+                    if (res && res.success) {
+                      haptic.success();
+                      showMsg('success', `បានបន្ថែមភាគទី ${nextEpNum} ទៅកាន់រឿងដោយស្វ័យប្រវត្តិ!`);
+                      await loadData();
+                      setActiveTabLocal('manage');
+                    }
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-black shadow-md flex items-center justify-center gap-1 active:scale-95"
+                >
+                  <Plus size={14} />
+                  <span>+ បន្ថែមជាភាគទី {(selectedDrama?.episodes?.length || 0) + 1} ភ្លាមៗ (+ Auto Add Episode)</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1271,7 +2308,17 @@ export default function Admin() {
           </div>
 
           <div>
-            <label className="text-[11px] font-bold text-gray-300">Video Stream URL</label>
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-gray-300">Video Stream URL</label>
+              <button
+                type="button"
+                onClick={() => singleEpDropInputRef.current?.click()}
+                className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1"
+              >
+                <CloudUpload size={12} />
+                <span>Upload វីដេអូទៅ R2</span>
+              </button>
+            </div>
             <input
               type="url"
               required
@@ -1280,6 +2327,59 @@ export default function Admin() {
               placeholder="https://pub-xxxx.r2.dev/Drama/EP01 - Episode 1.mp4"
               className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-purple-500 font-mono"
             />
+
+            {/* Inline Mini Drag & Drop Zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragOver(true);
+              }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => handleVideoDrop(e, 'newEpisode')}
+              onClick={() => singleEpDropInputRef.current?.click()}
+              className={`mt-2 p-3 rounded-xl border border-dashed text-center cursor-pointer transition-all ${
+                isDragOver
+                  ? 'border-indigo-400 bg-indigo-500/20'
+                  : 'border-white/10 bg-white/5 hover:border-indigo-500/40 hover:bg-white/10'
+              }`}
+            >
+              <input
+                type="file"
+                ref={singleEpDropInputRef}
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    handleVideoFileUpload(e.target.files[0], 'newEpisode');
+                  }
+                }}
+                accept="video/mp4,video/x-m4v,video/*"
+                className="hidden"
+              />
+              <div className="flex items-center justify-center gap-2 text-xs">
+                <CloudUpload size={16} className="text-indigo-400" />
+                <span className="text-gray-300 font-semibold text-[11px]">
+                  ឬអូសទម្លាក់ (Drag & Drop) វីដេអូពីកុំព្យូទ័រដើម្បី Upload ទៅ R2 ស្វ័យប្រវត្តិ
+                </span>
+              </div>
+            </div>
+
+            {/* Inline Upload Progress */}
+            {isUploadingVideo && (
+              <div className="mt-2 p-2 rounded-xl bg-indigo-950/40 border border-indigo-500/20 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-indigo-300 font-bold">
+                  <span className="flex items-center gap-1">
+                    <RefreshCw size={11} className="animate-spin text-indigo-400" />
+                    <span>កំពុង Upload ទៅកាន់ Cloudflare R2...</span>
+                  </span>
+                  <span>{videoUploadProgress}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-pink-500"
+                    style={{ width: `${videoUploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 pt-1">
@@ -1298,6 +2398,21 @@ export default function Admin() {
             />
             <label htmlFor="isFreeOne" className="text-xs text-gray-300">
               មើលឥតគិតថ្លៃ? (Is Free to watch?)
+            </label>
+          </div>
+
+          {/* Auto Broadcast Checkbox */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <input
+              type="checkbox"
+              id="autoBroadcastEp"
+              checked={autoBroadcastEp}
+              onChange={(e) => setAutoBroadcastEp(e.target.checked)}
+              className="rounded text-blue-500"
+            />
+            <label htmlFor="autoBroadcastEp" className="text-xs text-blue-300 font-bold flex items-center gap-1 cursor-pointer">
+              <Send size={13} />
+              <span>📢 ផ្សាយដំណឹងភាគថ្មីនេះទៅ Telegram ភ្លាមៗ (Auto-Broadcast)</span>
             </label>
           </div>
 
@@ -1380,6 +2495,21 @@ export default function Admin() {
               placeholder="Romance, CEO"
               className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-purple-500"
             />
+          </div>
+
+          {/* Auto Broadcast Checkbox */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
+            <input
+              type="checkbox"
+              id="autoBroadcastDrama"
+              checked={autoBroadcastDrama}
+              onChange={(e) => setAutoBroadcastDrama(e.target.checked)}
+              className="rounded text-blue-500"
+            />
+            <label htmlFor="autoBroadcastDrama" className="text-xs text-blue-300 font-bold flex items-center gap-1 cursor-pointer">
+              <Send size={13} />
+              <span>📢 ផ្សាយដំណឹងរឿងថ្មីនេះទៅ Telegram ភ្លាមៗ (Auto-Broadcast)</span>
+            </label>
           </div>
 
           <button

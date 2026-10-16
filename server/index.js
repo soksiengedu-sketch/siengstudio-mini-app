@@ -4,9 +4,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 import { db } from './db.js';
-import { setupTelegramBot, createStarsInvoice } from './bot.js';
+import { setupTelegramBot, createStarsInvoice, broadcastMessage } from './bot.js';
 import { generatePaymentQR, checkPaymentStatus, markPaymentCompleted } from './services/bakong.js';
+import { isR2Configured, generatePresignedUploadUrl, uploadBufferToR2 } from './services/r2.js';
 
 dotenv.config();
 
@@ -21,6 +23,17 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Video Upload Directory & Multer setup
+const videosUploadDir = path.join(__dirname, '../public/videos');
+if (!fs.existsSync(videosUploadDir)) {
+  fs.mkdirSync(videosUploadDir, { recursive: true });
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 } // Up to 500 MB video size
+});
 
 // --- API Routes ---
 
@@ -299,28 +312,55 @@ const checkAdminPin = (req, res, next) => {
 
 // Admin: Add Drama
 app.post('/api/admin/dramas', checkAdminPin, (req, res) => {
-  const dramaData = req.body;
+  const { autoBroadcast, ...dramaData } = req.body;
   const created = db.createDrama(dramaData);
+  if (autoBroadcast) {
+    broadcastMessage({
+      title: `🎬 រឿងថ្មីទើបចេញ! ${created.titleKm || created.title}`,
+      messageText: created.descriptionKm || `សូមរីករាយទស្សនារឿងភាគថ្មី "${created.titleKm || created.title}" នៅលើ SiengStudio Mini App!`,
+      dramaId: created.id,
+      webAppUrl: WEB_APP_URL
+    }).catch((e) => console.warn('Auto broadcast error:', e.message));
+  }
   res.json({ success: true, drama: created });
 });
 
 // Admin: Add Episode
 app.post('/api/admin/episodes', checkAdminPin, (req, res) => {
-  const { dramaId, ...episodeData } = req.body;
+  const { dramaId, autoBroadcast, ...episodeData } = req.body;
   if (!dramaId) return res.status(400).json({ error: 'dramaId is required' });
   const created = db.addEpisode(dramaId, episodeData);
   if (!created) return res.status(404).json({ error: 'Drama not found' });
+  if (autoBroadcast) {
+    const drama = db.getDramaById(dramaId);
+    broadcastMessage({
+      title: `🔥 ភាគថ្មីបានចេញហើយ! ${drama?.titleKm || drama?.title || ''}`,
+      messageText: `ភាគទី ${created.episodeNumber} នៃរឿង "${drama?.titleKm || drama?.title}" ត្រូវបានបន្ថែមជូនទស្សនាហើយ!`,
+      dramaId,
+      episodeNumber: created.episodeNumber,
+      webAppUrl: WEB_APP_URL
+    }).catch((e) => console.warn('Auto broadcast error:', e.message));
+  }
   res.json({ success: true, episode: created });
 });
 
 // Admin: Add Batch Episodes
 app.post('/api/admin/episodes/batch', checkAdminPin, (req, res) => {
-  const { dramaId, episodes } = req.body;
+  const { dramaId, episodes, autoBroadcast } = req.body;
   if (!dramaId || !episodes || !Array.isArray(episodes)) {
     return res.status(400).json({ error: 'dramaId and episodes array are required' });
   }
   const result = db.addEpisodesBatch(dramaId, episodes);
   if (!result) return res.status(404).json({ error: 'Drama not found' });
+  if (autoBroadcast && episodes.length > 0) {
+    const drama = db.getDramaById(dramaId);
+    broadcastMessage({
+      title: `⚡ បន្ថែមភាគថ្មី ${episodes.length} ភាគ! ${drama?.titleKm || drama?.title || ''}`,
+      messageText: `រឿង "${drama?.titleKm || drama?.title}" បានបន្ថែមភាគថ្មីចំនួន ${episodes.length} ភាគ! សូមចូលទស្សនាទាំងអស់គ្នា!`,
+      dramaId,
+      webAppUrl: WEB_APP_URL
+    }).catch((e) => console.warn('Auto broadcast error:', e.message));
+  }
   res.json({ success: true, count: episodes.length, episodes: result });
 });
 
@@ -398,6 +438,100 @@ app.get('/api/admin/stats', checkAdminPin, (req, res) => {
     totalEpisodes: totalEp,
     totalViews: '1.4M+'
   });
+});
+
+// Admin: Full Analytics Dashboard
+app.get('/api/admin/analytics', checkAdminPin, (req, res) => {
+  try {
+    const analytics = db.getAnalytics();
+    res.json(analytics);
+  } catch (err) {
+    console.error('Analytics error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin: Telegram Broadcast
+app.post('/api/admin/broadcast', checkAdminPin, async (req, res) => {
+  try {
+    const { messageText, title, dramaId, episodeNumber, buttonText, customChannelId, target } = req.body;
+    const result = await broadcastMessage({
+      messageText,
+      title,
+      dramaId,
+      episodeNumber,
+      buttonText,
+      customChannelId,
+      target: target || 'all',
+      webAppUrl: WEB_APP_URL
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Broadcast error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin: Generate Cloudflare R2 Presigned Upload URL
+app.post('/api/admin/r2/presign', checkAdminPin, async (req, res) => {
+  try {
+    const { fileName, contentType, folder } = req.body;
+    if (!fileName) {
+      return res.status(400).json({ success: false, message: 'fileName is required' });
+    }
+    const result = await generatePresignedUploadUrl(fileName, contentType || 'video/mp4', folder || 'videos');
+    res.json(result);
+  } catch (err) {
+    console.error('Presign URL error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin: Direct Video Upload (R2 or Local Fallback)
+app.post('/api/admin/upload-video', checkAdminPin, upload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No video file provided' });
+    }
+
+    const { originalname, buffer, mimetype } = req.file;
+    const cleanName = originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${Date.now()}_${cleanName}`;
+
+    // 1. If Cloudflare R2 is configured, upload directly to R2
+    if (isR2Configured()) {
+      try {
+        const r2Result = await uploadBufferToR2(buffer, originalname, mimetype || 'video/mp4');
+        return res.json({
+          success: true,
+          storage: 'cloudflare_r2',
+          url: r2Result.publicUrl,
+          key: r2Result.key,
+          filename: cleanName
+        });
+      } catch (r2Err) {
+        console.warn('R2 upload failed, falling back to local storage:', r2Err.message);
+      }
+    }
+
+    // 2. Fallback to local storage in public/videos
+    const localFilePath = path.join(videosUploadDir, filename);
+    fs.writeFileSync(localFilePath, buffer);
+
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
+    const localPublicUrl = `${protocol}://${host}/videos/${filename}`;
+
+    return res.json({
+      success: true,
+      storage: 'local',
+      url: localPublicUrl,
+      filename
+    });
+  } catch (err) {
+    console.error('Video upload error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // Serve public videos and assets directly

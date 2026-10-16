@@ -224,3 +224,94 @@ export async function createStarsInvoice({ title, description, payload, starsAmo
     return { success: false, message: err.message };
   }
 }
+
+/**
+ * Broadcast message to Telegram subscribers and/or channel
+ */
+export async function broadcastMessage({
+  messageText,
+  title,
+  dramaId,
+  episodeNumber,
+  buttonText,
+  customChannelId,
+  target = 'all', // 'all' | 'channel' | 'both'
+  webAppUrl: customWebAppUrl
+}) {
+  if (!activeBotInstance) {
+    return {
+      success: false,
+      message: 'Telegram Bot is not online or TELEGRAM_BOT_TOKEN is not configured.'
+    };
+  }
+
+  const appUrl = customWebAppUrl || process.env.WEB_APP_URL || 'https://siengstudio-mini-app.onrender.com';
+  let targetUrl = appUrl;
+  if (dramaId) {
+    targetUrl = episodeNumber
+      ? `${appUrl}?startapp=ep_${dramaId}_${episodeNumber}`
+      : `${appUrl}?startapp=drama_${dramaId}`;
+  }
+
+  const keyboard = new InlineKeyboard();
+  const btnLabel = buttonText || (episodeNumber ? `🎬 មើលភាគទី ${episodeNumber} ឥឡូវនេះ` : '🎬 ទស្សនាឥឡូវនេះ (Watch Now)');
+  if (targetUrl.startsWith('https://')) {
+    keyboard.webApp(btnLabel, targetUrl);
+  } else {
+    keyboard.url(btnLabel, targetUrl);
+  }
+
+  const header = title
+    ? `📢 <b>${title}</b>\n\n`
+    : `📢 <b>SiengStudio ដំណឹងរឿងភាគថ្មី! (New Update)</b>\n\n`;
+
+  const fullMessage = `${header}${messageText || 'មានរឿងភាគ និងភាគថ្មីៗទើបតែបញ្ចេញ! សូមចុចទស្សនាឥឡូវនេះ។'}\n\n✨ <b>SiengStudio Mini App</b>`;
+
+  let sentCount = 0;
+  let failedCount = 0;
+  let channelSent = false;
+  let channelError = null;
+
+  // 1. Send to Channel if requested
+  const channelId = customChannelId || process.env.TELEGRAM_CHANNEL_ID;
+  if ((target === 'channel' || target === 'both') && channelId) {
+    try {
+      await activeBotInstance.api.sendMessage(channelId, fullMessage, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      });
+      channelSent = true;
+    } catch (err) {
+      console.error('Failed to broadcast to channel:', err.message);
+      channelError = err.message;
+    }
+  }
+
+  // 2. Send to all registered users
+  if (target === 'all' || target === 'both') {
+    const userIds = Object.keys(db.data.users || {});
+    for (const uid of userIds) {
+      try {
+        await activeBotInstance.api.sendMessage(uid, fullMessage, {
+          parse_mode: 'HTML',
+          reply_markup: keyboard
+        });
+        sentCount++;
+      } catch (err) {
+        failedCount++;
+      }
+      // Delay 40ms to stay well below Telegram's 30 msg/sec rate limit
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  }
+
+  return {
+    success: true,
+    sentCount,
+    failedCount,
+    totalTargetUsers: Object.keys(db.data.users || {}).length,
+    channelSent,
+    channelError,
+    target
+  };
+}

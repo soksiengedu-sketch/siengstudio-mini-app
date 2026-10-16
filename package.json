@@ -22,6 +22,8 @@
   "author": "SiengStudio Team",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "bakong-khqr": "^1.0.20",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.6",
@@ -29,6 +31,7 @@
     "express": "^5.3.0",
     "grammy": "^1.46.0",
     "lucide-react": "^1.57.0",
+    "multer": "^2.4.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
