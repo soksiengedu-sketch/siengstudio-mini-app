@@ -67,17 +67,37 @@ export const api = {
     return cached?.find((d) => d.id === id) || null;
   },
 
-  async syncUser(userData) {
+  async syncUser(userData, refParam = null) {
     try {
       const res = await fetch(`${API_BASE}/user/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
+        body: JSON.stringify({ ...userData, ref: refParam })
       });
       return await res.json();
     } catch (err) {
       console.warn('Sync user error:', err);
       return null;
+    }
+  },
+
+  async getReferralStats(telegramId) {
+    try {
+      const res = await fetch(`${API_BASE}/user/referral-stats?telegramId=${telegramId}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('Get referral stats error:', err);
+      return { success: false, referrals: [], referralsCount: 0, referralCoinsEarned: 0 };
+    }
+  },
+
+  async getCheckInStatus(telegramId) {
+    try {
+      const res = await fetch(`${API_BASE}/user/checkin-status?telegramId=${telegramId}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('Get checkin status error:', err);
+      return { success: false, streak: 1, hasCheckedInToday: false };
     }
   },
 
@@ -201,6 +221,34 @@ export const api = {
       });
       return await res.json();
     } catch (err) {
+      return { success: false, message: err.message };
+    }
+  },
+
+  async createStarsInvoice(data) {
+    try {
+      const res = await fetch(`${API_BASE}/stars/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Create Stars invoice error:', err);
+      return { success: false, message: err.message };
+    }
+  },
+
+  async confirmStarsPayment(data) {
+    try {
+      const res = await fetch(`${API_BASE}/stars/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return await res.json();
+    } catch (err) {
+      console.warn('Confirm Stars payment error:', err);
       return { success: false, message: err.message };
     }
   },

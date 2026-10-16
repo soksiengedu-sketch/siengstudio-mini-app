@@ -228,18 +228,50 @@ class Database {
         favorites: [],
         history: [],
         checkInStreak: 1,
-        lastCheckInDate: null
+        lastCheckInDate: null,
+        referrals: [],
+        referredBy: null,
+        referralCoinsEarned: 0
       };
       this.save();
     }
-    return this.data.users[id];
+    // Ensure referral fields exist for existing users
+    const u = this.data.users[id];
+    if (!Array.isArray(u.referrals)) u.referrals = [];
+    if (u.referredBy === undefined) u.referredBy = null;
+    if (u.referralCoinsEarned === undefined) u.referralCoinsEarned = 0;
+    return u;
   }
 
-  syncUser(userData) {
+  syncUser(userData, refParam = null) {
+    const idStr = String(userData.id);
+    const isNew = !this.data.users[idStr];
     const user = this.getUser(userData.id);
     user.firstName = userData.first_name || user.firstName;
     user.lastName = userData.last_name || user.lastName;
     user.username = userData.username || user.username;
+
+    // Handle Referral logic
+    if (refParam && isNew && !user.referredBy) {
+      const cleanRefId = String(refParam).replace('ref_', '').trim();
+      if (cleanRefId && cleanRefId !== idStr) {
+        const referrer = this.getUser(cleanRefId);
+        if (referrer) {
+          user.referredBy = cleanRefId;
+          // Award welcome bonus +30 coins to new user
+          user.coins += 30;
+          // Award referrer +50 coins
+          referrer.coins += 50;
+          referrer.referralCoinsEarned = (referrer.referralCoinsEarned || 0) + 50;
+          referrer.referrals.unshift({
+            telegramId: idStr,
+            name: userData.first_name || 'Friend',
+            date: new Date().toISOString()
+          });
+        }
+      }
+    }
+
     this.save();
 
     // Check if user checked in today
@@ -253,8 +285,17 @@ class Database {
     const user = this.getUser(telegramId);
     const todayStr = new Date().toISOString().slice(0, 10);
 
+    const streakRewards = [10, 15, 20, 25, 35, 50, 100];
+
     if (user.lastCheckInDate === todayStr) {
-      return { success: false, message: 'Already checked in today' };
+      return {
+        success: false,
+        message: 'Already checked in today',
+        hasCheckedInToday: true,
+        streak: user.checkInStreak,
+        coins: user.coins,
+        rewardsSchedule: streakRewards
+      };
     }
 
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -264,7 +305,6 @@ class Database {
       user.checkInStreak = 1;
     }
 
-    const streakRewards = [10, 15, 20, 25, 35, 50, 100];
     let reward = streakRewards[user.checkInStreak - 1] || 15;
 
     // Lite VIP gets +30 bonus coins daily
@@ -276,7 +316,15 @@ class Database {
     user.lastCheckInDate = todayStr;
     this.save();
 
-    return { success: true, reward, streak: user.checkInStreak, coins: user.coins };
+    return {
+      success: true,
+      reward,
+      streak: user.checkInStreak,
+      coins: user.coins,
+      hasCheckedInToday: true,
+      rewardsSchedule: streakRewards,
+      nextReward: streakRewards[user.checkInStreak % 7]
+    };
   }
 
   unlockEpisode(telegramId, dramaId, episodeId) {

@@ -13,7 +13,10 @@ export default function Wallet() {
     setIsCoinModalOpen,
     setIsDailyModalOpen,
     setIsShareModalOpen,
-    checkInStreak
+    checkInStreak,
+    hasCheckedInToday,
+    referralsCount,
+    referralCoinsEarned
   } = useApp();
 
   const coinPackages = [
@@ -136,7 +139,7 @@ export default function Wallet() {
             </div>
             <div>
               <p className="text-xs font-bold text-white leading-tight">{t('inviteFriends')}</p>
-              <p className="text-[10px] text-sky-300">+50 កាក់</p>
+              <p className="text-[10px] text-sky-300">+50 កាក់ ({referralsCount || 0} នាក់)</p>
             </div>
           </button>
         </div>
@@ -250,9 +253,13 @@ export default function Wallet() {
             </div>
             <button
               onClick={() => setIsDailyModalOpen(true)}
-              className="px-2.5 py-1 rounded-lg bg-pink-500/20 text-pink-300 text-xs font-bold"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                hasCheckedInToday
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'bg-pink-500/20 text-pink-300'
+              }`}
             >
-              Claim
+              {hasCheckedInToday ? '✓ Done' : 'Claim'}
             </button>
           </div>
 
@@ -261,7 +268,9 @@ export default function Wallet() {
               <Users size={16} className="text-sky-400" />
               <div>
                 <p className="text-xs font-bold text-white">{t('inviteFriends')}</p>
-                <p className="text-[10px] text-gray-400">+50 កាក់រាល់ការណែនាំម្នាក់</p>
+                <p className="text-[10px] text-gray-400">
+                  +50 កាក់/ម្នាក់ • សរុប {referralsCount || 0} នាក់ (+{referralCoinsEarned || 0} កាក់)
+                </p>
               </div>
             </div>
             <button

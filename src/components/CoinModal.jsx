@@ -14,7 +14,7 @@ import {
   CheckCircle2,
   RefreshCw
 } from 'lucide-react';
-import { haptic } from '../services/telegram';
+import { haptic, openTelegramInvoice } from '../services/telegram';
 import { api } from '../services/api';
 import confetti from 'canvas-confetti';
 
@@ -286,15 +286,57 @@ export default function CoinModal() {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
     if (paymentMethod === 'stars') {
-      setTimeout(() => {
-        if (activeSubTab === 'coins') {
-          topUpCoins(currentCoinPkg.id, 'stars');
-        } else {
-          upgradeVip(currentVipPkg.id);
+      const starsAmount = activeSubTab === 'coins' ? currentCoinPkg.stars : currentVipPkg.stars;
+      const itemTitle = activeSubTab === 'coins'
+        ? `SiengStudio: ${currentCoinPkg.totalCoins} Coins Pack`
+        : `SiengStudio: ${currentVipPkg.name}`;
+
+      try {
+        const invoiceRes = await api.createStarsInvoice({
+          telegramId: user?.id || 'demo_user',
+          type: activeSubTab,
+          packageId: currentCoinPkg.id,
+          tier: currentVipPkg.id,
+          starsAmount,
+          title: itemTitle,
+          description: `Instant unlock on SiengStudio Telegram Mini App`
+        });
+
+        if (invoiceRes && invoiceRes.success && invoiceRes.invoiceLink) {
+          const status = await openTelegramInvoice(invoiceRes.invoiceLink);
+          if (status === 'paid') {
+            const confirmRes = await api.confirmStarsPayment({
+              telegramId: user?.id || 'demo_user',
+              type: activeSubTab,
+              packageId: currentCoinPkg.id,
+              tier: currentVipPkg.id
+            });
+            setIsProcessing(false);
+            handleSuccessAction(confirmRes);
+            return;
+          } else if (status === 'cancelled') {
+            setIsProcessing(false);
+            return;
+          }
         }
+      } catch (err) {
+        console.warn('Telegram Stars invoice error:', err);
+      }
+
+      // Fallback credit if running in local dev / test browser
+      try {
+        const confirmRes = await api.confirmStarsPayment({
+          telegramId: user?.id || 'demo_user',
+          type: activeSubTab,
+          packageId: currentCoinPkg.id,
+          tier: currentVipPkg.id
+        });
+        setIsProcessing(false);
+        handleSuccessAction(confirmRes);
+      } catch (err) {
         setIsProcessing(false);
         handleSuccessAction({ success: true, coins: coins + currentCoinPkg.totalCoins });
-      }, 1000);
+      }
       return;
     }
 

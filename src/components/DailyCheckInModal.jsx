@@ -11,21 +11,25 @@ export default function DailyCheckInModal() {
     lang,
     checkInStreak,
     hasCheckedInToday,
-    triggerDailyCheckIn
+    triggerDailyCheckIn,
+    isVip,
+    vipTier
   } = useApp();
 
   const [claimedReward, setClaimedReward] = useState(null);
 
   if (!isDailyModalOpen) return null;
 
+  const isLiteVip = isVip && vipTier === 'lite';
+
   const rewards = [
-    { day: 1, coins: 10 },
-    { day: 2, coins: 15 },
-    { day: 3, coins: 20 },
-    { day: 4, coins: 25 },
-    { day: 5, coins: 35 },
-    { day: 6, coins: 50 },
-    { day: 7, coins: 100, special: true }
+    { day: 1, coins: isLiteVip ? 40 : 10 },
+    { day: 2, coins: isLiteVip ? 45 : 15 },
+    { day: 3, coins: isLiteVip ? 50 : 20 },
+    { day: 4, coins: isLiteVip ? 55 : 25 },
+    { day: 5, coins: isLiteVip ? 65 : 35 },
+    { day: 6, coins: isLiteVip ? 80 : 50 },
+    { day: 7, coins: isLiteVip ? 130 : 100, special: true }
   ];
 
   const handleClaim = async () => {

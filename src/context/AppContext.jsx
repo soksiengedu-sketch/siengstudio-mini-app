@@ -90,6 +90,23 @@ export const AppProvider = ({ children }) => {
   const [history, setHistory] = useState([]);
   const [checkInStreak, setCheckInStreak] = useState(1);
   const [hasCheckedInToday, setHasCheckedInToday] = useState(false);
+  const [rewardsSchedule, setRewardsSchedule] = useState([10, 15, 20, 25, 35, 50, 100]);
+
+  // Referral State
+  const [referralsCount, setReferralsCount] = useState(0);
+  const [referralCoinsEarned, setReferralCoinsEarned] = useState(0);
+  const [referralsList, setReferralsList] = useState([]);
+
+  const refreshReferrals = async () => {
+    if (user?.id) {
+      const res = await api.getReferralStats(user.id);
+      if (res && res.success) {
+        setReferralsCount(res.referralsCount || 0);
+        setReferralCoinsEarned(res.referralCoinsEarned || 0);
+        setReferralsList(res.referrals || []);
+      }
+    }
+  };
 
   const [authenticatedAdminPin, setAuthenticatedAdminPin] = useState('');
   const [adminInitialTab, setAdminInitialTab] = useState('manage');
@@ -121,9 +138,30 @@ export const AppProvider = ({ children }) => {
     const tgUser = getTelegramUser();
     setUser(tgUser);
 
+    // Check deep links (referrals & dramas)
+    let refParam = null;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const startParam =
+        urlParams.get('tgWebAppStartParam') ||
+        urlParams.get('startapp') ||
+        urlParams.get('ref') ||
+        (typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.start_param : null);
+
+      if (startParam) {
+        if (startParam.startsWith('ref_')) {
+          refParam = startParam;
+        } else if (startParam.startsWith('drama_')) {
+          const dId = startParam.replace('drama_', '');
+          setCurrentDramaId(dId);
+          setActiveTab('detail');
+        }
+      }
+    } catch (e) {}
+
     // Sync with backend API
     if (tgUser?.id) {
-      api.syncUser(tgUser).then((res) => {
+      api.syncUser(tgUser, refParam).then((res) => {
         if (res && res.user) {
           setCoins(res.user.coins ?? 150);
           setIsVip(Boolean(res.user.isVip));
@@ -133,20 +171,12 @@ export const AppProvider = ({ children }) => {
           setHistory(res.user.history || []);
           setCheckInStreak(res.user.checkInStreak || 1);
           setHasCheckedInToday(Boolean(res.user.hasCheckedInToday));
+          setReferralsCount(res.user.referrals?.length || 0);
+          setReferralCoinsEarned(res.user.referralCoinsEarned || 0);
+          setReferralsList(res.user.referrals || []);
         }
       });
     }
-
-    // Check deep links if launched with start_param (e.g. ?tgWebAppStartParam=drama_1)
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const startParam = urlParams.get('tgWebAppStartParam') || urlParams.get('startapp');
-      if (startParam && startParam.startsWith('drama_')) {
-        const dId = startParam.replace('drama_', '');
-        setCurrentDramaId(dId);
-        setActiveTab('detail');
-      }
-    } catch (e) {}
   }, []);
 
   const switchLanguage = (newLang) => {
@@ -339,7 +369,12 @@ export const AppProvider = ({ children }) => {
         screenMode,
         setScreenMode,
         toggleScreenMode,
-        isFullscreen
+        isFullscreen,
+        referralsCount,
+        referralCoinsEarned,
+        referralsList,
+        refreshReferrals,
+        rewardsSchedule
       }}
     >
       {children}

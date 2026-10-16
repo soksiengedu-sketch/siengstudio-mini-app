@@ -85,3 +85,30 @@ export const shareToTelegram = (text, url) => {
     window.open(shareUrl, '_blank');
   }
 };
+
+/**
+ * Open native Telegram Stars invoice dialog in Telegram WebApp
+ * @param {string} invoiceLink - Link returned by Bot API createInvoiceLink
+ * @returns {Promise<'paid' | 'cancelled' | 'failed' | 'pending' | 'fallback'>}
+ */
+export const openTelegramInvoice = (invoiceLink) => {
+  return new Promise((resolve) => {
+    if (tg?.openInvoice) {
+      try {
+        tg.openInvoice(invoiceLink, (status) => {
+          resolve(status);
+        });
+        return;
+      } catch (err) {
+        console.warn('Telegram openInvoice error:', err);
+      }
+    }
+    // Fallback if tested outside Telegram WebApp
+    if (invoiceLink && invoiceLink.startsWith('http')) {
+      window.open(invoiceLink, '_blank');
+      resolve('opened_external');
+    } else {
+      resolve('fallback');
+    }
+  });
+};

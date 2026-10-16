@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from './db.js';
-import { setupTelegramBot } from './bot.js';
+import { setupTelegramBot, createStarsInvoice } from './bot.js';
 import { generatePaymentQR, checkPaymentStatus, markPaymentCompleted } from './services/bakong.js';
 
 dotenv.config();
@@ -37,12 +37,44 @@ app.get('/api/dramas/:id', (req, res) => {
   res.json(drama);
 });
 
-// Sync user profile
+// Sync user profile (with referral code support)
 app.post('/api/user/sync', (req, res) => {
-  const userData = req.body;
+  const { ref, ...userData } = req.body;
   if (!userData?.id) return res.status(400).json({ error: 'User ID is required' });
-  const user = db.syncUser(userData);
+  const user = db.syncUser(userData, ref);
   res.json({ success: true, user });
+});
+
+// Get user referral statistics & friends list
+app.get('/api/user/referral-stats', (req, res) => {
+  const { telegramId } = req.query;
+  if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
+  const user = db.getUser(telegramId);
+  res.json({
+    success: true,
+    telegramId,
+    referredBy: user.referredBy,
+    referralsCount: user.referrals?.length || 0,
+    referrals: user.referrals || [],
+    referralCoinsEarned: user.referralCoinsEarned || 0
+  });
+});
+
+// Get user daily check-in status
+app.get('/api/user/checkin-status', (req, res) => {
+  const { telegramId } = req.query;
+  if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
+  const user = db.getUser(telegramId);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const hasCheckedInToday = user.lastCheckInDate === todayStr;
+  const streakRewards = [10, 15, 20, 25, 35, 50, 100];
+  res.json({
+    success: true,
+    hasCheckedInToday,
+    streak: user.checkInStreak || 1,
+    rewardsSchedule: streakRewards,
+    todayReward: streakRewards[(user.checkInStreak - 1) % 7]
+  });
 });
 
 // Daily check-in
@@ -177,6 +209,66 @@ app.post('/api/payment/confirm-now', async (req, res) => {
       }
       const updatedUser = db.getUser(telegramId);
       return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+    }
+
+    res.json({ success: true, paid: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- Telegram Stars Native Checkout Routes ---
+
+// Create Telegram Stars Invoice Link
+app.post('/api/stars/create-invoice', async (req, res) => {
+  try {
+    const { telegramId, type, packageId, tier, starsAmount, title, description } = req.body;
+    const payload = { telegramId, type, packageId, tier };
+
+    const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+    const defaultTitle = type === 'coins'
+      ? `SiengStudio: ${packageCoinsMap[packageId] || 345} Coins`
+      : `SiengStudio: ${tier === 'lite' ? 'Lite VIP' : 'All-Access VIP'} Membership`;
+
+    const invoiceResult = await createStarsInvoice({
+      title: title || defaultTitle,
+      description: description || 'Digital currency on SiengStudio Telegram Mini App',
+      payload,
+      starsAmount: Number(starsAmount) || 25
+    });
+
+    res.json(invoiceResult);
+  } catch (err) {
+    console.error('Error creating Stars invoice:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Confirm / Credit Telegram Stars Payment (called when WebApp openInvoice returns status === 'paid')
+app.post('/api/stars/confirm', (req, res) => {
+  try {
+    const { telegramId, type, packageId, tier } = req.body;
+    if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
+
+    if (type === 'coins') {
+      const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+      const addedCoins = packageCoinsMap[packageId] || 345;
+      const updated = db.topUpCoins(telegramId, addedCoins);
+      return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
+    } else if (type === 'vip') {
+      const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
+      if (tier === 'lite') {
+        db.topUpCoins(telegramId, 200);
+      }
+      const updatedUser = db.getUser(telegramId);
+      return res.json({
+        success: true,
+        paid: true,
+        isVip: true,
+        vipTier: vipResult.vipTier,
+        coins: updatedUser.coins,
+        type
+      });
     }
 
     res.json({ success: true, paid: true });

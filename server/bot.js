@@ -124,6 +124,58 @@ export function setupTelegramBot(token, webAppUrl) {
     );
   });
 
+  // Telegram Stars Payment Handlers
+  bot.on('pre_checkout_query', async (ctx) => {
+    try {
+      await ctx.answerPreCheckoutQuery(true);
+    } catch (err) {
+      console.error('Error answering pre_checkout_query:', err);
+      try {
+        await ctx.answerPreCheckoutQuery(false, { error_message: 'Payment verification failed' });
+      } catch (e) {}
+    }
+  });
+
+  bot.on('message:successful_payment', async (ctx) => {
+    try {
+      const payment = ctx.message.successful_payment;
+      const user = ctx.from;
+      let payload = {};
+      try {
+        payload = JSON.parse(payment.invoice_payload);
+      } catch (e) {
+        payload = { telegramId: user.id, type: 'coins', packageId: 2 };
+      }
+
+      const telegramId = String(payload.telegramId || user.id);
+      if (payload.type === 'coins') {
+        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+        const addedCoins = packageCoinsMap[payload.packageId] || 345;
+        db.topUpCoins(telegramId, addedCoins);
+        await ctx.reply(
+          `🌟 <b>ការទូទាត់ជោគជ័យ! (Payment Successful)</b>\n\n` +
+          `អ្នកបានទិញតាម Telegram Stars (${payment.total_amount} Stars) ដោយជោគជ័យ!\n` +
+          `ទទួលបាន: <b>+${addedCoins} កាក់</b> 🎬\n` +
+          `សូមចូលទៅកាន់ SiengStudio ដើម្បីទស្សនាបន្ត!`,
+          { parse_mode: 'HTML' }
+        );
+      } else if (payload.type === 'vip') {
+        db.upgradeVip(telegramId, payload.tier || 'monthly');
+        if (payload.tier === 'lite') {
+          db.topUpCoins(telegramId, 200);
+        }
+        await ctx.reply(
+          `👑 <b>សូមអបអរសាទរ! អ្នកបានក្លាយជាសមាជិក VIP!</b>\n\n` +
+          `បានបង់តាម Telegram Stars (${payment.total_amount} Stars) ដោយជោគជ័យ!\n` +
+          `រីករាយទស្សនារឿងភាគទាំងអស់ដោយគ្មានដែនកំណត់! ✨`,
+          { parse_mode: 'HTML' }
+        );
+      }
+    } catch (err) {
+      console.error('Error processing successful_payment:', err);
+    }
+  });
+
   // Start Bot in Background
   bot.start({
     onStart: async (botInfo) => {
@@ -147,5 +199,28 @@ export function setupTelegramBot(token, webAppUrl) {
     console.error('Telegram Bot start error:', err.message);
   });
 
+  activeBotInstance = bot;
   return bot;
+}
+
+export let activeBotInstance = null;
+
+export async function createStarsInvoice({ title, description, payload, starsAmount }) {
+  if (!activeBotInstance) {
+    return { success: false, message: 'Telegram Bot is not initialized or offline' };
+  }
+  try {
+    const link = await activeBotInstance.api.createInvoiceLink({
+      title: title || 'SiengStudio Coins',
+      description: description || 'Digital currency for SiengStudio Mini App',
+      payload: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      provider_token: '', // Must be empty string for Telegram Stars (XTR)
+      currency: 'XTR',
+      prices: [{ label: title || 'Stars', amount: Number(starsAmount) || 25 }]
+    });
+    return { success: true, invoiceLink: link };
+  } catch (err) {
+    console.error('Failed to create Stars invoice:', err);
+    return { success: false, message: err.message };
+  }
 }
