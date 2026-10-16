@@ -124,6 +124,213 @@ export function setupTelegramBot(token, webAppUrl) {
     );
   });
 
+  // Command: /admin - Connect or authenticate admin chat ID
+  bot.command('admin', async (ctx) => {
+    try {
+      const text = (ctx.match || '').trim();
+      const correctPin = (process.env.ADMIN_PIN || '88@48*').trim();
+      const uid = String(ctx.from.id);
+      const adminIds = getAdminChatIds();
+
+      if (text === correctPin || adminIds.includes(uid)) {
+        db.data.adminTelegramIds = db.data.adminTelegramIds || [];
+        if (!db.data.adminTelegramIds.includes(uid)) {
+          db.data.adminTelegramIds.push(uid);
+          db.save();
+        }
+        await ctx.reply(
+          `🛡️ <b>Admin Access Granted!</b>\n\n` +
+          `គណនីរបស់អ្នក (<code>${uid}</code> - @${ctx.from.username || ctx.from.first_name || 'Admin'}) ត្រូវបានភ្ជាប់ជា Admin ទទួលសារផ្តល់ដំណឹង និងប៊ូតុង 1-Tap Approve ការទូទាត់រាល់ពេលមានអតិថិជនទិញកាក់/VIP! 🚀\n\n` +
+          `💡 <i>រាល់ពេលមានការទូទាត់ ប្រព័ន្ធនឹងផ្ញើសារមកកាន់ Chat នេះជាមួយប៊ូតុង Approve ភ្លាមៗ។</i>`,
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await ctx.reply(
+          `🔒 <b>ចូលប្រើប្រាស់មុខងារ Admin:</b>\n\n` +
+          `សូមវាយបញ្ចូល PIN ដូចខាងក្រោម៖\n` +
+          `<code>/admin 88@48*</code>`,
+          { parse_mode: 'HTML' }
+        );
+      }
+    } catch (err) {
+      console.error('Error handling /admin command:', err);
+    }
+  });
+
+  // Callback query: 1-Tap Approve Payment
+  bot.callbackQuery(/^approve_pay:(.+)$/, async (ctx) => {
+    try {
+      const md5 = ctx.match[1];
+      const adminIds = getAdminChatIds();
+      const callerId = String(ctx.from.id);
+
+      if (!adminIds.includes(callerId)) {
+        return ctx.answerCallbackQuery({
+          text: '⛔ អ្នកគ្មានសិទ្ធិអនុម័តទេ! សូមផ្ញើ /admin 88@48* ជាមុនសិន',
+          show_alert: true
+        });
+      }
+
+      const { processPaymentApproval } = await import('./services/bakong.js');
+      const approverName = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || callerId);
+      const result = processPaymentApproval(md5, approverName);
+
+      if (!result.success) {
+        return ctx.answerCallbackQuery({ text: `❌ ${result.message}`, show_alert: true });
+      }
+
+      const p = result.payment || {};
+      const isCoins = p.type === 'coins';
+      const pkgMap = { 1: '200 Coins', 2: '345 Coins', 3: '1,000 Coins', 4: '2,700 Coins' };
+      const pkgLabel = isCoins ? (pkgMap[p.packageId] || 'Coins') : `VIP ${p.tier || 'Monthly'}`;
+      const amountStr = p.currency === 'USD' ? `$${p.amount}` : `${p.amount?.toLocaleString()} ៛`;
+
+      await ctx.answerCallbackQuery({ text: '✅ បានអនុម័ត និងបញ្ចូលកាក់ជូនអតិថិជនជោគជ័យ!' });
+
+      try {
+        await ctx.editMessageText(
+          `✅ <b>បានអនុម័តដោយជោគជ័យ! (Approved)</b>\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 <b>អតិថិជន:</b> <code>${p.telegramId}</code>\n` +
+          `📦 <b>កញ្ចប់:</b> <b>${pkgLabel}</b> (${amountStr})\n` +
+          `🧾 <b>វិក្កយបត្រ:</b> <code>#${p.billNumber}</code>\n` +
+          (isCoins
+            ? `🎉 <b>បានបញ្ចូល:</b> +${result.addedCoins} Coins (សមតុល្យ: ${result.coins} Coins)\n`
+            : `👑 <b>VIP Status:</b> សកម្មជោគជ័យ (${p.tier || 'Monthly'})\n`) +
+          `👮 <b>អនុម័តដោយ:</b> ${approverName}\n` +
+          `🕒 <b>ពេលវេលា:</b> ${new Date().toLocaleTimeString('km-KH', { timeZone: 'Asia/Phnom_Penh' })}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `✨ <i>ប្រព័ន្ធបានបញ្ចូលរង្វាន់ និងផ្ញើសារប្រាប់អតិថិជនរួចរាល់ហើយ!</i>`,
+          { parse_mode: 'HTML' }
+        );
+      } catch (e) {
+        console.warn('Could not edit admin message:', e.message);
+      }
+
+      // Notify customer directly in Telegram
+      await notifyCustomerPaymentApproved(p, result.addedCoins);
+    } catch (err) {
+      console.error('Error approving payment via Telegram bot:', err);
+      try {
+        await ctx.answerCallbackQuery({ text: `Error: ${err.message}`, show_alert: true });
+      } catch (e) {}
+    }
+  });
+
+  // Callback query: Live NBC Core Check
+  bot.callbackQuery(/^check_nbc:(.+)$/, async (ctx) => {
+    try {
+      const md5 = ctx.match[1];
+      await ctx.answerCallbackQuery({ text: '⏳ កំពុងពិនិត្យផ្ទាល់ជាមួយ NBC Bakong Core...' });
+      const { checkPaymentStatus, processPaymentApproval } = await import('./services/bakong.js');
+      const checkRes = await checkPaymentStatus(md5);
+
+      if (checkRes.paid) {
+        const result = processPaymentApproval(md5, 'NBC Bakong Core (Live Verification)');
+        const p = result.payment || {};
+        await ctx.editMessageText(
+          `✅ <b>ផ្ទៀងផ្ទាត់ជោគជ័យពីធនាគារជាតិ NBC Bakong!</b>\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `វិក្កយបត្រ <code>#${p.billNumber}</code> ត្រូវបានផ្ទៀងផ្ទាត់ឃើញក្នុង Ledger ធនាគារជាតិ!\n` +
+          `កាក់/VIP ត្រូវបានបញ្ចូលជូនអតិថិជន <code>${p.telegramId}</code> ដោយស្វ័យប្រវត្តិ។`,
+          { parse_mode: 'HTML' }
+        );
+        await notifyCustomerPaymentApproved(p, result.addedCoins);
+      } else if (checkRes.quotaExceeded) {
+        await ctx.reply(
+          `⚠️ <b>កូតា NBC Bakong API ពេញកំណត់ (errorCode: 17)</b>\n\n` +
+          `សូមពិនិត្យមើល App ធនាគារផ្ទាល់ខ្លួនរបស់អ្នក (ABA / ACLEDA / Bakong) រួចចុចប៊ូតុង Approve ខាងលើដោយផ្ទាល់!`,
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await ctx.reply(
+          `ℹ️ <b>លទ្ធផលពី NBC Bakong:</b>\n${checkRes.message || 'មិនទាន់រកឃើញប្រតិបត្តិការក្នុង Ledger របស់ធនាគារជាតិទេ។'}`,
+          { parse_mode: 'HTML' }
+        );
+      }
+    } catch (err) {
+      console.error('Error checking NBC via Telegram bot:', err);
+      try {
+        await ctx.answerCallbackQuery({ text: `Error: ${err.message}` });
+      } catch (e) {}
+    }
+  });
+
+  // Callback query: List Recent Payments
+  bot.callbackQuery('admin_list_payments', async (ctx) => {
+    try {
+      const payments = db.getAllPayments().slice(0, 5);
+      if (payments.length === 0) {
+        return ctx.answerCallbackQuery({ text: 'មិនទាន់មានប្រតិបត្តិការទេ' });
+      }
+      let text = `📋 <b>វិក្កយបត្រថ្មីៗទាំង ៥:</b>\n━━━━━━━━━━━━━━━━━━\n`;
+      for (const p of payments) {
+        text += `• <b>#${p.billNumber}</b> - <code>${p.telegramId}</code> (${p.amount} ${p.currency}) [${p.isProcessed ? '✅ Completed' : p.isPaid ? '✓ Paid' : '⏳ Pending'}]\n`;
+      }
+      await ctx.reply(text, { parse_mode: 'HTML' });
+      await ctx.answerCallbackQuery();
+    } catch (e) {
+      try { await ctx.answerCallbackQuery(); } catch (_) {}
+    }
+  });
+
+  // Handle Customer Photo (Bank Transfer Slip / Screenshot)
+  bot.on('message:photo', async (ctx) => {
+    try {
+      const uid = String(ctx.from.id);
+      const adminIds = getAdminChatIds();
+
+      // If sent by an admin without invoice context, skip
+      if (adminIds.includes(uid) && !ctx.message.caption?.includes('#SS')) {
+        return;
+      }
+
+      const pending = db.getLatestPendingPaymentForUser(uid);
+      const photos = ctx.message.photo;
+      const highestResPhoto = photos[photos.length - 1];
+
+      await ctx.reply(
+        `🙏 <b>យើងខ្ញុំបានទទួលរូបភាពស្លីបផ្ទេរប្រាក់របស់អ្នកហើយ!</b>\n\n` +
+        `ប្រព័ន្ធកំពុងបញ្ជូនទៅកាន់ Admin ដើម្បីពិនិត្យ និងអនុម័តបញ្ចូលកាក់ជូនភ្លាមៗ។ សូមរង់ចាំបន្តិច! ⏳`,
+        { parse_mode: 'HTML' }
+      );
+
+      const keyboard = new InlineKeyboard();
+      if (pending) {
+        const amountStr = pending.currency === 'USD' ? `$${pending.amount}` : `${pending.amount?.toLocaleString()} ៛`;
+        keyboard.text(`✅ ចុច Approve (${amountStr}) ភ្លាម`, `approve_pay:${pending.md5}`);
+      } else {
+        keyboard.text(`📋 ពិនិត្យបញ្ជីវិក្កយបត្រ`, `admin_list_payments`);
+      }
+
+      const customerTag = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || uid);
+      const caption =
+        `📸 <b>អតិថិជនបានផ្ញើស្លីបផ្ទេរប្រាក់ (Receipt)!</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `👤 <b>អតិថិជន:</b> ${customerTag} (ID: <code>${uid}</code>)\n` +
+        (pending
+          ? `📦 <b>វិក្កយបត្រ:</b> <code>#${pending.billNumber}</code> (${pending.amount} ${pending.currency})\n`
+          : `⚠️ <i>មិនមានវិក្កយបត្រ Pending ក្នុងប្រព័ន្ធទេ</i>\n`) +
+        `🕒 <b>ពេលវេលា:</b> ${new Date().toLocaleTimeString('km-KH', { timeZone: 'Asia/Phnom_Penh' })}\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `👉 សូមពិនិត្យស្លីបខាងលើ និង App ធនាគារ រួចចុច Approve ខាងក្រោម៖`;
+
+      for (const adminId of adminIds) {
+        try {
+          await ctx.api.sendPhoto(adminId, highestResPhoto.file_id, {
+            caption,
+            parse_mode: 'HTML',
+            reply_markup: keyboard
+          });
+        } catch (e) {
+          console.warn(`Could not forward photo to admin ${adminId}:`, e.message);
+        }
+      }
+    } catch (err) {
+      console.error('Error handling customer photo slip:', err);
+    }
+  });
+
   // Telegram Stars Payment Handlers
   bot.on('pre_checkout_query', async (ctx) => {
     try {
@@ -315,3 +522,130 @@ export async function broadcastMessage({
     target
   };
 }
+
+/**
+ * Get all authorized admin Telegram Chat IDs
+ */
+export function getAdminChatIds() {
+  const envAdmins = (process.env.ADMIN_TELEGRAM_ID || '8175240868')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const dbAdmins = db.data.adminTelegramIds || [];
+  return Array.from(new Set([...envAdmins, ...dbAdmins]));
+}
+
+/**
+ * Notify admin when a customer generates a KHQR payment request
+ */
+export async function notifyAdminNewPayment(paymentRecord) {
+  if (!activeBotInstance) return;
+  const adminIds = getAdminChatIds();
+  if (adminIds.length === 0) return;
+
+  const isCoins = paymentRecord.type === 'coins';
+  const pkgMap = { 1: '200 Coins', 2: '345 Coins', 3: '1,000 Coins', 4: '2,700 Coins' };
+  const pkgLabel = isCoins ? (pkgMap[paymentRecord.packageId] || 'Coins') : `VIP ${paymentRecord.tier || 'Monthly'}`;
+  const amountStr = paymentRecord.currency === 'USD' ? `$${paymentRecord.amount}` : `${paymentRecord.amount?.toLocaleString()} ៛`;
+
+  const msg =
+    `🔔 <b>មានការស្នើសុំទិញ ${isCoins ? 'កាក់' : 'VIP'} ថ្មី! (New KHQR)</b>\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `👤 <b>អតិថិជន:</b> <code>${paymentRecord.telegramId}</code>\n` +
+    `📦 <b>កញ្ចប់:</b> <b>${pkgLabel}</b> (${amountStr})\n` +
+    `🧾 <b>វិក្កយបត្រ:</b> <code>#${paymentRecord.billNumber}</code>\n` +
+    `🏦 <b>គណនីទទួល:</b> <code>${paymentRecord.accountId}</code>\n` +
+    `⏳ <b>ស្ថានភាព:</b> <i>កំពុងរង់ចាំការស្កេន (Pending)</i>\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💡 <i>ពេលឃើញប្រាក់ចូលកុងធនាគារ លោកអ្នកអាចចុច Approve ខាងក្រោមនេះភ្លាមៗ៖</i>`;
+
+  const keyboard = new InlineKeyboard()
+    .text(`⚡ Approve (${amountStr})`, `approve_pay:${paymentRecord.md5}`)
+    .text(`🔍 ពិនិត្យ NBC`, `check_nbc:${paymentRecord.md5}`);
+
+  for (const adminId of adminIds) {
+    try {
+      await activeBotInstance.api.sendMessage(adminId, msg, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      });
+    } catch (e) {
+      console.warn(`Could not send new payment alert to admin ${adminId}:`, e.message);
+    }
+  }
+}
+
+/**
+ * Notify admin when customer taps "I have transferred / ខ្ញុំបានផ្ទេរប្រាក់រួចរាល់"
+ */
+export async function notifyAdminPaymentConfirmation(payment, nbcReason) {
+  if (!activeBotInstance) return;
+  const adminIds = getAdminChatIds();
+  if (adminIds.length === 0) return;
+
+  const isCoins = payment.type === 'coins';
+  const pkgMap = { 1: '200 Coins', 2: '345 Coins', 3: '1,000 Coins', 4: '2,700 Coins' };
+  const pkgLabel = isCoins ? (pkgMap[payment.packageId] || 'Coins') : `VIP ${payment.tier || 'Monthly'}`;
+  const amountStr = payment.currency === 'USD' ? `$${payment.amount}` : `${payment.amount?.toLocaleString()} ៛`;
+
+  const msg =
+    `🚨 <b>អតិថិជនទើបតែចុច «ខ្ញុំបានផ្ទេរប្រាក់រួចរាល់»!</b>\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `👤 <b>អតិថិជន:</b> <code>${payment.telegramId}</code>\n` +
+    `📦 <b>កញ្ចប់:</b> <b>${pkgLabel}</b> (${amountStr})\n` +
+    `🧾 <b>វិក្កយបត្រ:</b> <code>#${payment.billNumber}</code>\n` +
+    `⚠️ <b>ស្ថានភាព NBC:</b> <i>${nbcReason || 'កំពុងរង់ចាំ / ផុតកូតា API'}</i>\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `👉 <b>សូមពិនិត្យមើល App ធនាគាររបស់អ្នក (ABA / ACLEDA / Bakong)</b>\n` +
+    `ប្រសិនបើឃើញប្រាក់ចូលរួចហើយ សូមចុចប៊ូតុង Approve ខាងក្រោម៖`;
+
+  const keyboard = new InlineKeyboard()
+    .text(`✅ ចុច Approve បញ្ចូលកាក់ (${amountStr}) ភ្លាម`, `approve_pay:${payment.md5}`)
+    .text(`🔍 ពិនិត្យ NBC`, `check_nbc:${payment.md5}`);
+
+  for (const adminId of adminIds) {
+    try {
+      await activeBotInstance.api.sendMessage(adminId, msg, {
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      });
+    } catch (e) {
+      console.warn(`Could not send confirmation alert to admin ${adminId}:`, e.message);
+    }
+  }
+}
+
+/**
+ * Notify customer via Telegram Bot that payment was approved
+ */
+export async function notifyCustomerPaymentApproved(payment, addedCoins) {
+  if (!activeBotInstance || !payment.telegramId) return;
+  try {
+    const isCoins = payment.type === 'coins';
+    const rewardText = isCoins
+      ? `🎉 អ្នកទទួលបាន: <b>+${addedCoins} កាក់</b> 🎬`
+      : `👑 គណនីរបស់អ្នកត្រូវបានដំឡើងទៅជា <b>VIP (${payment.tier || 'Monthly'})</b> រួចរាល់ហើយ!`;
+
+    const webAppUrl = process.env.WEB_APP_URL || 'https://siengstudio-mini-app.onrender.com';
+    const keyboard = new InlineKeyboard();
+    if (webAppUrl.startsWith('https://')) {
+      keyboard.webApp('🎬 បើកទស្សនាឥឡូវនេះ (Open App)', webAppUrl);
+    } else {
+      keyboard.url('🎬 បើកទស្សនាឥឡូវនេះ (Open App)', webAppUrl);
+    }
+
+    const msg =
+      `🌟 <b>ការទូទាត់ទទួលបានជោគជ័យ! (Payment Approved)</b>\n\n` +
+      `វិក្កយបត្រ <code>#${payment.billNumber}</code> ត្រូវបានអនុម័តដោយជោគជ័យ!\n` +
+      `${rewardText}\n\n` +
+      `សូមអរគុណសម្រាប់ការគាំទ្រ SiengStudio! រីករាយទស្សនារឿងភាគខ្លីៗគ្មានដែនកំណត់។ ✨`;
+
+    await activeBotInstance.api.sendMessage(payment.telegramId, msg, {
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+  } catch (err) {
+    console.warn(`Could not notify customer ${payment.telegramId}:`, err.message);
+  }
+}
+

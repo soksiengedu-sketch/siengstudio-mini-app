@@ -133,6 +133,13 @@ export const generatePaymentQR = async ({
     console.warn('Failed to persist payment to db:', err.message);
   }
 
+  // Notify admin via Telegram Bot in background
+  import('../bot.js').then(({ notifyAdminNewPayment }) => {
+    if (typeof notifyAdminNewPayment === 'function') {
+      notifyAdminNewPayment(paymentRecord).catch(() => {});
+    }
+  }).catch(() => {});
+
   return {
     success: true,
     qr,
@@ -236,6 +243,46 @@ export const markPaymentCompleted = (md5) => {
     return payment;
   }
   return null;
+};
+
+export const processPaymentApproval = (md5, approvedBy = 'Admin') => {
+  let payment = markPaymentCompleted(md5);
+  if (!payment) return { success: false, message: 'Payment record not found or expired' };
+
+  if (payment.isProcessed) {
+    return { success: true, paid: true, message: 'Payment already approved', payment };
+  }
+
+  payment.isProcessed = true;
+  payment.approvedBy = approvedBy;
+  payment.approvedAt = Date.now();
+  db.markPaymentProcessed(md5);
+
+  const { telegramId, type, packageId, tier } = payment;
+  let addedCoins = 0;
+  let updatedUser = null;
+
+  if (type === 'coins') {
+    const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+    addedCoins = packageCoinsMap[packageId] || 345;
+    updatedUser = db.topUpCoins(telegramId, addedCoins);
+  } else if (type === 'vip') {
+    const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
+    if (tier === 'lite') {
+      addedCoins = 200;
+      db.topUpCoins(telegramId, 200);
+    }
+    updatedUser = db.getUser(telegramId);
+  }
+
+  return {
+    success: true,
+    paid: true,
+    coins: updatedUser ? updatedUser.coins : 0,
+    addedCoins,
+    type,
+    payment
+  };
 };
 
 // Check if a Bakong Account ID exists on the National Bank of Cambodia network

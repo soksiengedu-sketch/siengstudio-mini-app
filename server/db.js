@@ -554,6 +554,15 @@ class Database {
       ...data
     })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
+
+  getLatestPendingPaymentForUser(telegramId) {
+    if (!this.data.payments || !telegramId) return null;
+    const list = Object.entries(this.data.payments)
+      .map(([md5, data]) => ({ md5, ...data }))
+      .filter((p) => String(p.telegramId) === String(telegramId) && !p.isProcessed)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return list[0] || null;
+  }
 }
 
 export const db = new Database();

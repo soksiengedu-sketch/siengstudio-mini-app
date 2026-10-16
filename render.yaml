@@ -22,3 +22,5 @@ services:
         value: SOKSIENG CHAN
       - key: MERCHANT_CITY
         value: Phnom Penh
+      - key: ADMIN_TELEGRAM_ID
+        value: "8175240868"

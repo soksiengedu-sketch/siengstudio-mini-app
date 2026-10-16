@@ -6,11 +6,18 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { db } from './db.js';
-import { setupTelegramBot, createStarsInvoice, broadcastMessage } from './bot.js';
+import {
+  setupTelegramBot,
+  createStarsInvoice,
+  broadcastMessage,
+  notifyAdminPaymentConfirmation,
+  notifyCustomerPaymentApproved
+} from './bot.js';
 import {
   generatePaymentQR,
   checkPaymentStatus,
   markPaymentCompleted,
+  processPaymentApproval,
   verifyBakongAccount,
   decodeKhqrPayload
 } from './services/bakong.js';
@@ -197,26 +204,10 @@ app.post('/api/payment/check-status', async (req, res) => {
     const status = await checkPaymentStatus(md5, { telegramId, type, packageId, tier });
 
     if (status.paid && status.payment && !status.payment.isProcessed) {
-      status.payment.isProcessed = true;
-      db.markPaymentProcessed(md5);
-
-      const targetTelegramId = status.payment.telegramId || telegramId;
-      const targetType = status.payment.type || type || 'coins';
-      const targetPkgId = status.payment.packageId || packageId;
-      const targetTier = status.payment.tier || tier;
-
-      if (targetType === 'coins') {
-        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-        const addedCoins = packageCoinsMap[targetPkgId] || 345;
-        const updated = db.topUpCoins(targetTelegramId, addedCoins);
-        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type: targetType });
-      } else if (targetType === 'vip') {
-        const vipResult = db.upgradeVip(targetTelegramId, targetTier || 'monthly');
-        if (targetTier === 'lite') {
-          db.topUpCoins(targetTelegramId, 200);
-        }
-        const updatedUser = db.getUser(targetTelegramId);
-        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type: targetType });
+      const result = processPaymentApproval(md5, 'NBC Bakong Core (Auto-Check)');
+      if (result.success) {
+        notifyCustomerPaymentApproved(result.payment, result.addedCoins).catch(() => {});
+        return res.json(result);
       }
     }
 
@@ -237,30 +228,20 @@ app.post('/api/payment/confirm-now', async (req, res) => {
     const status = await checkPaymentStatus(md5, { telegramId, type, packageId, tier });
 
     if (status.paid && status.payment && !status.payment.isProcessed) {
-      status.payment.isProcessed = true;
-      db.markPaymentProcessed(md5);
-
-      const targetTelegramId = status.payment.telegramId || telegramId;
-      const targetType = status.payment.type || type || 'coins';
-      const targetPkgId = status.payment.packageId || packageId;
-      const targetTier = status.payment.tier || tier;
-
-      if (targetType === 'coins') {
-        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-        const addedCoins = packageCoinsMap[targetPkgId] || 345;
-        const updated = db.topUpCoins(targetTelegramId, addedCoins);
-        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type: targetType });
-      } else if (targetType === 'vip') {
-        const vipResult = db.upgradeVip(targetTelegramId, targetTier || 'monthly');
-        if (targetTier === 'lite') {
-          db.topUpCoins(targetTelegramId, 200);
-        }
-        const updatedUser = db.getUser(targetTelegramId);
-        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type: targetType });
+      const result = processPaymentApproval(md5, 'NBC Bakong Core (Confirm Now)');
+      if (result.success) {
+        notifyCustomerPaymentApproved(result.payment, result.addedCoins).catch(() => {});
+        return res.json(result);
       }
     }
 
     // Payment has not arrived or is not verified on Bakong network:
+    // Send high-priority alert to Admin Telegram!
+    notifyAdminPaymentConfirmation(
+      status.payment || { md5, telegramId, type, packageId, tier },
+      status.message
+    ).catch(() => {});
+
     return res.json({
       success: true,
       paid: status.paid || false,
@@ -277,28 +258,10 @@ app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
   try {
     const { md5 } = req.body;
     if (!md5) return res.status(400).json({ success: false, message: 'Missing md5' });
-    const payment = markPaymentCompleted(md5);
-    if (!payment) return res.status(404).json({ success: false, message: 'Payment record not found or expired' });
-
-    if (!payment.isProcessed) {
-      payment.isProcessed = true;
-      db.markPaymentProcessed(md5);
-      const { telegramId, type, packageId, tier } = payment;
-      if (type === 'coins') {
-        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-        const addedCoins = packageCoinsMap[packageId] || 345;
-        const updated = db.topUpCoins(telegramId, addedCoins);
-        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
-      } else if (type === 'vip') {
-        const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
-        if (tier === 'lite') {
-          db.topUpCoins(telegramId, 200);
-        }
-        const updatedUser = db.getUser(telegramId);
-        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
-      }
-    }
-    res.json({ success: true, paid: true, message: 'Payment already approved' });
+    const result = processPaymentApproval(md5, 'Admin Panel (PIN)');
+    if (!result.success) return res.status(404).json(result);
+    notifyCustomerPaymentApproved(result.payment, result.addedCoins).catch(() => {});
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
