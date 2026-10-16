@@ -15,6 +15,7 @@ import {
   Info
 } from 'lucide-react';
 import { haptic, shareToTelegram } from '../services/telegram';
+import { getLastWatchedDrama } from '../utils/playback';
 
 export default function DramaDetail({ dramaId, onBack }) {
   const {
@@ -143,16 +144,34 @@ export default function DramaDetail({ dramaId, onBack }) {
 
       {/* Main Actions: Play & Favorite */}
       <div className="px-4 mt-3 flex items-center gap-3">
-        <button
-          onClick={() => {
-            const firstEp = episodes[0]?.id || 1;
-            startWatching(drama.id, firstEp);
-          }}
-          className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-transform"
-        >
-          <Play size={18} className="fill-white" />
-          {t('watchNow')} ({t('ep')} 1)
-        </button>
+        {(() => {
+          const lastWatched = drama ? getLastWatchedDrama(drama.id) : null;
+          const hasResume = lastWatched && lastWatched.seconds >= 3;
+          const resumeEp = hasResume
+            ? episodes.find((e) => e.id === lastWatched.episodeId) || episodes[0]
+            : episodes[0];
+
+          return (
+            <button
+              onClick={() => {
+                const targetEpId = resumeEp?.id || episodes[0]?.id || 1;
+                startWatching(drama.id, targetEpId);
+              }}
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-transform"
+            >
+              <Play size={18} className="fill-white" />
+              {hasResume ? (
+                <span>
+                  {lang === 'km' ? 'បន្តមើល' : 'Continue'} ({t('ep')} {resumeEp?.episodeNumber || 1} • {lastWatched.timeString})
+                </span>
+              ) : (
+                <span>
+                  {t('watchNow')} ({t('ep')} 1)
+                </span>
+              )}
+            </button>
+          );
+        })()}
 
         <button
           onClick={() => toggleFavorite(drama)}

@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Lock, Check, Play, Crown } from 'lucide-react';
 import { haptic } from '../services/telegram';
+import { getEpisodeProgress } from '../utils/playback';
 
 export default function EpisodeDrawer({
   isOpen,
@@ -47,6 +48,7 @@ export default function EpisodeDrawer({
           {episodes.map((ep) => {
             const isCurrent = ep.id === currentEpId;
             const unlocked = isEpisodeUnlocked(dramaId, ep);
+            const progress = getEpisodeProgress(dramaId, ep.id);
 
             return (
               <button
@@ -56,7 +58,7 @@ export default function EpisodeDrawer({
                   onSelectEpisode(ep.id);
                   onClose();
                 }}
-                className={`relative h-12 rounded-xl flex flex-col items-center justify-center font-bold text-xs transition-all ${
+                className={`relative h-12 rounded-xl flex flex-col items-center justify-center font-bold text-xs transition-all overflow-hidden ${
                   isCurrent
                     ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-900/50 scale-105'
                     : unlocked
@@ -67,7 +69,7 @@ export default function EpisodeDrawer({
                 <span>{ep.episodeNumber || ep.id}</span>
 
                 {/* Status Icon */}
-                <div className="absolute -top-1 -right-1">
+                <div className="absolute -top-1 -right-1 z-10">
                   {isCurrent ? (
                     <span className="w-4 h-4 rounded-full bg-white text-purple-600 flex items-center justify-center text-[8px] shadow">
                       <Play size={8} className="fill-purple-600 ml-0.5" />
@@ -84,6 +86,18 @@ export default function EpisodeDrawer({
                     </span>
                   )}
                 </div>
+
+                {/* Progress bar at bottom of button */}
+                {progress && progress.seconds >= 3 && !isCurrent && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+                    <div
+                      className="h-full bg-purple-400"
+                      style={{
+                        width: `${progress.duration ? Math.min(100, (progress.seconds / progress.duration) * 100) : 50}%`
+                      }}
+                    />
+                  </div>
+                )}
               </button>
             );
           })}

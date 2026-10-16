@@ -15,10 +15,17 @@ import {
   Volume2,
   VolumeX,
   Coins,
-  Crown
+  Crown,
+  Zap
 } from 'lucide-react';
 import { haptic, shareToTelegram } from '../services/telegram';
 import EpisodeDrawer from './EpisodeDrawer';
+import {
+  saveEpisodeProgress,
+  getEpisodeProgress,
+  clearEpisodeProgress,
+  formatDuration
+} from '../utils/playback';
 
 export default function ReelPlayer({ drama, initialEpId, onBack }) {
   const {
@@ -41,6 +48,7 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
   });
 
   const currentEpisode = episodes[currentEpIndex] || episodes[0] || {};
+  const nextEpData = episodes[currentEpIndex + 1];
   const isUnlocked = isEpisodeUnlocked(drama.id, currentEpisode);
 
   const videoRef = useRef(null);
@@ -58,20 +66,31 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
   const [autoNextCountdown, setAutoNextCountdown] = useState(3);
   const autoNextIntervalRef = useRef(null);
 
+  // Resume Playback states
+  const [resumeToast, setResumeToast] = useState(null); // { seconds, timeString, show: true }
+  const resumeToastTimeoutRef = useRef(null);
+  const lastSavedTimeRef = useRef(0);
+  const hasAppliedResumeRef = useRef(false);
+
+  // Smart Preload states
+  const [shouldPreloadNext, setShouldPreloadNext] = useState(false);
+  const [isNextPreloaded, setIsNextPreloaded] = useState(false);
+
   // Swipe detection
   const touchStartY = useRef(0);
   const touchEndY = useRef(0);
 
   const isFav = favorites.some((f) => f.id === drama.id);
 
-  // Clear auto-next interval on unmount
+  // Clear auto-next interval and resume timeout on unmount
   useEffect(() => {
     return () => {
       if (autoNextIntervalRef.current) clearInterval(autoNextIntervalRef.current);
+      if (resumeToastTimeoutRef.current) clearTimeout(resumeToastTimeoutRef.current);
     };
   }, []);
 
-  // Sync episode change and clear timer
+  // Sync episode change and clear timers
   useEffect(() => {
     if (autoNextIntervalRef.current) {
       clearInterval(autoNextIntervalRef.current);
@@ -83,11 +102,30 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
     }
   }, [initialEpId]);
 
-  // Handle Play/Pause when current episode or unlock status changes
+  // Handle Play/Pause and Resume Playback when current episode or unlock status changes
   useEffect(() => {
+    hasAppliedResumeRef.current = false;
+    setShouldPreloadNext(false);
+    setIsNextPreloaded(false);
+    if (resumeToastTimeoutRef.current) clearTimeout(resumeToastTimeoutRef.current);
+
     if (videoRef.current) {
       if (isUnlocked) {
-        videoRef.current.currentTime = 0;
+        const saved = getEpisodeProgress(drama.id, currentEpisode.id);
+        if (saved && saved.seconds >= 3) {
+          videoRef.current.currentTime = saved.seconds;
+          hasAppliedResumeRef.current = true;
+          setResumeToast({ seconds: saved.seconds, timeString: saved.timeString, show: true });
+          resumeToastTimeoutRef.current = setTimeout(() => {
+            setResumeToast((prev) => (prev ? { ...prev, show: false } : null));
+          }, 3500);
+          recordHistory(drama.id, currentEpisode.id, saved.seconds);
+        } else {
+          videoRef.current.currentTime = 0;
+          setResumeToast(null);
+          recordHistory(drama.id, currentEpisode.id, 0);
+        }
+
         videoRef.current
           .play()
           .then(() => setIsPlaying(true))
@@ -95,13 +133,24 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
       } else {
         videoRef.current.pause();
         setIsPlaying(false);
+        setResumeToast(null);
       }
     }
-    // Record history
-    if (drama?.id && currentEpisode?.id) {
-      recordHistory(drama.id, currentEpisode.id, 0);
-    }
   }, [currentEpIndex, isUnlocked]);
+
+  // Save progress before unmounting or changing episode
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && drama?.id && currentEpisode?.id) {
+        const cur = videoRef.current.currentTime;
+        const dur = videoRef.current.duration || 0;
+        if (cur >= 3) {
+          saveEpisodeProgress(drama.id, currentEpisode.id, currentEpisode.episodeNumber, cur, dur);
+          recordHistory(drama.id, currentEpisode.id, Math.floor(cur));
+        }
+      }
+    };
+  }, [currentEpIndex]);
 
   const togglePlay = () => {
     if (!isUnlocked) return;
@@ -206,14 +255,58 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
     if (videoRef.current) videoRef.current.playbackRate = newSpeed;
   };
 
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      const dur = videoRef.current.duration || 0;
+      setDuration(dur);
+      const saved = getEpisodeProgress(drama.id, currentEpisode.id);
+      if (saved && saved.seconds >= 3 && isUnlocked && !hasAppliedResumeRef.current) {
+        videoRef.current.currentTime = saved.seconds;
+        hasAppliedResumeRef.current = true;
+        setResumeToast({ seconds: saved.seconds, timeString: saved.timeString, show: true });
+        if (resumeToastTimeoutRef.current) clearTimeout(resumeToastTimeoutRef.current);
+        resumeToastTimeoutRef.current = setTimeout(() => {
+          setResumeToast((prev) => (prev ? { ...prev, show: false } : null));
+        }, 3500);
+      }
+    }
+  };
+
+  const handleRestartFromBeginning = () => {
+    haptic.medium();
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      clearEpisodeProgress(drama.id, currentEpisode.id);
+      recordHistory(drama.id, currentEpisode.id, 0);
+    }
+    setResumeToast(null);
+  };
+
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      setDuration(videoRef.current.duration || 0);
+      const cur = videoRef.current.currentTime;
+      const dur = videoRef.current.duration || 0;
+      setCurrentTime(cur);
+      if (dur > 0 && dur !== duration) setDuration(dur);
+
+      // 1. Smart Preload Trigger for next episode (when >= 25% watched or within last 30s)
+      if (!shouldPreloadNext && nextEpData && nextEpData.videoUrl) {
+        if (cur >= 3 && (cur / (dur || 1) >= 0.25 || (dur > 0 && dur - cur <= 30))) {
+          setShouldPreloadNext(true);
+        }
+      }
+
+      // 2. Resume memory: save progress every 2 seconds
+      if (Math.abs(cur - lastSavedTimeRef.current) >= 2) {
+        lastSavedTimeRef.current = cur;
+        saveEpisodeProgress(drama.id, currentEpisode.id, currentEpisode.episodeNumber, cur, dur);
+        recordHistory(drama.id, currentEpisode.id, Math.floor(cur));
+      }
     }
   };
 
   const handleVideoEnded = () => {
+    clearEpisodeProgress(drama.id, currentEpisode.id);
     if (currentEpIndex < episodes.length - 1) {
       setShowAutoNext(true);
       setAutoNextCountdown(3);
@@ -244,6 +337,21 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
+      {/* Background Smart Preloader for Next Episode */}
+      {shouldPreloadNext && nextEpData?.videoUrl && (
+        <video
+          key={`preload-ep-${nextEpData.id}-${nextEpData.videoUrl}`}
+          src={nextEpData.videoUrl}
+          preload="auto"
+          muted
+          playsInline
+          className="hidden pointer-events-none"
+          style={{ display: 'none', width: 0, height: 0, opacity: 0, position: 'absolute' }}
+          onLoadedData={() => setIsNextPreloaded(true)}
+          onCanPlayThrough={() => setIsNextPreloaded(true)}
+        />
+      )}
+
       {/* Ambient Blurred Backdrop for PC / Wide displays */}
       <div className="absolute inset-0 hidden md:block overflow-hidden pointer-events-none opacity-30 blur-3xl scale-125">
         <img
@@ -272,8 +380,30 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
             isCinema ? 'object-contain' : 'object-cover'
           }`}
           onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleVideoEnded}
         />
+
+        {/* Resume Playback Toast Indicator */}
+        {resumeToast && resumeToast.show && isUnlocked && (
+          <div
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-black/85 backdrop-blur-md border border-purple-500/50 text-white px-3.5 py-1.5 rounded-full flex items-center gap-2 shadow-2xl shadow-purple-950/60 animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-semibold tracking-wide">
+              {lang === 'km' ? `បន្តពីនាទី ${resumeToast.timeString}` : `Resumed at ${resumeToast.timeString}`}
+            </span>
+            <button
+              type="button"
+              onClick={handleRestartFromBeginning}
+              className="text-[10px] text-purple-300 hover:text-white font-bold ml-1 pl-1.5 border-l border-white/20 flex items-center gap-1 active:scale-90 transition-transform"
+            >
+              <RotateCcw size={11} />
+              <span>{lang === 'km' ? 'ដើម' : 'Restart'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Floating Heart Animations */}
         {hearts.map((h) => (
@@ -342,12 +472,17 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
         {/* Auto Next Countdown Overlay */}
         {showAutoNext && (
           <div
-            className="absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-purple-600/90 text-white text-xs font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md z-30"
+            className="absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-purple-600/90 text-white text-xs font-bold flex items-center gap-2 shadow-2xl backdrop-blur-md z-30 active:scale-95 transition-transform"
             onClick={(e) => {
               e.stopPropagation();
               nextEpisode();
             }}
           >
+            {isNextPreloaded && (
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-500/30 text-emerald-300 text-[10px] font-bold">
+                <Zap size={10} className="fill-emerald-400" /> ⚡ Ready
+              </span>
+            )}
             <span>{t('autoPlayNext')} {autoNextCountdown}{t('seconds')}</span>
             <span className="underline ml-1 cursor-pointer">{t('playNext')}</span>
           </div>
@@ -371,9 +506,16 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
           <p className="text-xs font-bold text-white line-clamp-1 max-w-[200px]">
             {dramaTitle}
           </p>
-          <p className="text-[10px] text-gray-300">
-            {t('ep')} {currentEpisode.episodeNumber || currentEpIndex + 1} / {episodes.length}
-          </p>
+          <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-300">
+            <span>
+              {t('ep')} {currentEpisode.episodeNumber || currentEpIndex + 1} / {episodes.length}
+            </span>
+            {isNextPreloaded && nextEpData && (
+              <span className="text-emerald-400 font-bold flex items-center gap-0.5">
+                • <Zap size={10} className="fill-emerald-400" /> {lang === 'km' ? 'ត្រៀមរួចរាល់' : 'Ep Ready'}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Mute & Cinema Toggles */}
