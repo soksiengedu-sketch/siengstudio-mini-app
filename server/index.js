@@ -347,6 +347,49 @@ app.post('/api/bakong/decode-qr', (req, res) => {
   }
 });
 
+// 7. Debug Bakong MD5 Check (Returns raw HTTP response from NBC)
+app.post('/api/bakong/debug-md5', async (req, res) => {
+  try {
+    const { md5 } = req.body;
+    const rawToken = process.env.BAKONG_API_TOKEN ? process.env.BAKONG_API_TOKEN.trim() : null;
+    if (!rawToken) {
+      return res.json({ success: false, message: 'BAKONG_API_TOKEN is not configured on server' });
+    }
+
+    const authHeader = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
+    const tokenPreview = `${rawToken.slice(0, 10)}...${rawToken.slice(-6)} (length: ${rawToken.length})`;
+
+    const response = await fetch('https://api-bakong.nbc.gov.kh/v1/check_transaction_by_md5', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader
+      },
+      body: JSON.stringify({ md5 })
+    });
+
+    const status = response.status;
+    const statusText = response.statusText;
+    const responseBody = await response.text();
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(responseBody);
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      md5,
+      httpStatus: status,
+      httpStatusText: statusText,
+      tokenPreview,
+      responseBody: parsed || responseBody
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // --- Telegram Stars Native Checkout Routes ---
 
 // Create Telegram Stars Invoice Link
