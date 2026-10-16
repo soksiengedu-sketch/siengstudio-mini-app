@@ -84,8 +84,12 @@ export default function Admin() {
     try {
       const data = await api.getDramas();
       setDramas(data || []);
-      if (data && data.length > 0 && !selectedDramaId) {
-        setSelectedDramaId(data[0].id);
+      if (data && data.length > 0) {
+        if (!selectedDramaId || !data.some((d) => d.id === selectedDramaId)) {
+          setSelectedDramaId(data[0].id);
+        }
+      } else {
+        setSelectedDramaId('');
       }
       const totalEp = data?.reduce((acc, d) => acc + (d.episodes?.length || 0), 0) || 0;
       setStats({
@@ -148,7 +152,9 @@ export default function Admin() {
     haptic.medium();
     const dramaData = {
       ...newDrama,
-      genres: newDrama.genres.split(',').map((g) => g.trim())
+      posterUrl: (newDrama.posterUrl || '').trim(),
+      bannerUrl: (newDrama.bannerUrl || '').trim(),
+      genres: newDrama.genres.split(',').map((g) => g.trim()).filter(Boolean)
     };
     const res = await api.createDrama(dramaData, authenticatedAdminPin);
     if (res.success) {
@@ -205,6 +211,8 @@ export default function Admin() {
     haptic.medium();
     const dramaData = {
       ...editingDrama,
+      posterUrl: (editingDrama.posterUrl || '').trim(),
+      bannerUrl: (editingDrama.bannerUrl || '').trim(),
       genres: typeof editingDrama.genres === 'string'
         ? editingDrama.genres.split(',').map((g) => g.trim()).filter(Boolean)
         : editingDrama.genres
@@ -269,7 +277,11 @@ export default function Admin() {
   const handleAddEpisode = async (e) => {
     e.preventDefault();
     haptic.medium();
-    const res = await api.addEpisode(selectedDramaId, newEpisode, authenticatedAdminPin);
+    const cleanEpisode = {
+      ...newEpisode,
+      videoUrl: (newEpisode.videoUrl || '').trim()
+    };
+    const res = await api.addEpisode(selectedDramaId, cleanEpisode, authenticatedAdminPin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបន្ថែមភាគទី ${newEpisode.episodeNumber} ដោយជោគជ័យ!`);
@@ -293,7 +305,7 @@ export default function Admin() {
     for (let i = start; i <= total; i++) {
       const isFree = i <= freeUntil;
       const pad = String(i).padStart(2, '0');
-      let url = batchData.urlPattern;
+      let url = (batchData.urlPattern || '').trim();
       url = url.replace(/\{nn\}/g, pad);
       url = url.replace(/\{n\}/g, String(i));
 

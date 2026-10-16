@@ -235,7 +235,15 @@ export default function CoinModal() {
   const startPollingPayment = (md5) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
+    const startTime = Date.now();
+    const MAX_POLL_MS = 15 * 60 * 1000; // 15 minutes limit
+
     pollIntervalRef.current = setInterval(async () => {
+      if (Date.now() - startTime > MAX_POLL_MS) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        return;
+      }
+
       try {
         const checkRes = await api.checkPaymentStatus(md5);
         if (checkRes && checkRes.paid) {

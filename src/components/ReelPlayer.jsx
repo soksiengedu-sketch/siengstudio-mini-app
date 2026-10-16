@@ -56,6 +56,7 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
   const [hearts, setHearts] = useState([]);
   const [showAutoNext, setShowAutoNext] = useState(false);
   const [autoNextCountdown, setAutoNextCountdown] = useState(3);
+  const autoNextIntervalRef = useRef(null);
 
   // Swipe detection
   const touchStartY = useRef(0);
@@ -63,8 +64,19 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
 
   const isFav = favorites.some((f) => f.id === drama.id);
 
-  // Sync episode change
+  // Clear auto-next interval on unmount
   useEffect(() => {
+    return () => {
+      if (autoNextIntervalRef.current) clearInterval(autoNextIntervalRef.current);
+    };
+  }, []);
+
+  // Sync episode change and clear timer
+  useEffect(() => {
+    if (autoNextIntervalRef.current) {
+      clearInterval(autoNextIntervalRef.current);
+      setShowAutoNext(false);
+    }
     if (initialEpId) {
       const idx = episodes.findIndex((e) => e.id === initialEpId);
       if (idx >= 0) setCurrentEpIndex(idx);
@@ -205,12 +217,13 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
     if (currentEpIndex < episodes.length - 1) {
       setShowAutoNext(true);
       setAutoNextCountdown(3);
+      if (autoNextIntervalRef.current) clearInterval(autoNextIntervalRef.current);
       let count = 3;
-      const interval = setInterval(() => {
+      autoNextIntervalRef.current = setInterval(() => {
         count -= 1;
         setAutoNextCountdown(count);
         if (count <= 0) {
-          clearInterval(interval);
+          if (autoNextIntervalRef.current) clearInterval(autoNextIntervalRef.current);
           nextEpisode();
         }
       }, 1000);

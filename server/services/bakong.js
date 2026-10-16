@@ -62,6 +62,14 @@ export const generatePaymentQR = async ({
     }
   });
 
+  // Prune expired payments
+  const now = Date.now();
+  for (const [key, val] of activePayments.entries()) {
+    if (val.expiresAt && now > val.expiresAt) {
+      activePayments.delete(key);
+    }
+  }
+
   // Track active payment
   activePayments.set(md5, {
     telegramId,
