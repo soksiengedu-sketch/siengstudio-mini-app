@@ -48,7 +48,28 @@ export default function Admin() {
   const [dramas, setDramas] = useState([]);
   const [stats, setStats] = useState({ totalDramas: 0, totalEpisodes: 0, totalViews: 0 });
   const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'editDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
-  const [selectedDramaId, setSelectedDramaId] = useState('');
+  const [selectedDramaId, setSelectedDramaIdState] = useState(() => {
+    try {
+      return sessionStorage.getItem('siengstudio_selected_drama_id') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const selectedDramaIdRef = useRef(selectedDramaId);
+  selectedDramaIdRef.current = selectedDramaId;
+
+  const setSelectedDramaId = (id) => {
+    const cleanId = id || '';
+    setSelectedDramaIdState(cleanId);
+    selectedDramaIdRef.current = cleanId;
+    try {
+      if (cleanId) {
+        sessionStorage.setItem('siengstudio_selected_drama_id', cleanId);
+      } else {
+        sessionStorage.removeItem('siengstudio_selected_drama_id');
+      }
+    } catch (e) {}
+  };
   const [message, setMessage] = useState(null);
   const [searchEp, setSearchEp] = useState('');
   const [editingEpisode, setEditingEpisode] = useState(null);
@@ -255,12 +276,26 @@ export default function Admin() {
     }
   };
 
+  const handleDramaChange = (newId) => {
+    setSelectedDramaId(newId);
+    const target = dramas.find((d) => d.id === newId);
+    if (target && activeTab === 'editDrama') {
+      startEditingDrama(target);
+    }
+  };
+
   const loadData = async () => {
     try {
       const data = await api.getDramas();
       setDramas(data || []);
       if (data && data.length > 0) {
-        if (!selectedDramaId || !data.some((d) => d.id === selectedDramaId)) {
+        const currentSavedId = selectedDramaIdRef.current || (typeof window !== 'undefined' ? sessionStorage.getItem('siengstudio_selected_drama_id') : '');
+        const exists = data.some((d) => d.id === currentSavedId);
+        if (currentSavedId && exists) {
+          if (selectedDramaIdRef.current !== currentSavedId) {
+            setSelectedDramaId(currentSavedId);
+          }
+        } else {
           setSelectedDramaId(data[0].id);
         }
       } else {
@@ -278,9 +313,16 @@ export default function Admin() {
     }
   };
 
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+
   useEffect(() => {
     loadData();
-    const handleUpdated = () => loadData();
+    const handleUpdated = () => {
+      if (loadDataRef.current) {
+        loadDataRef.current();
+      }
+    };
     window.addEventListener('siengstudio_dramas_updated', handleUpdated);
     return () => window.removeEventListener('siengstudio_dramas_updated', handleUpdated);
   }, []);
@@ -319,13 +361,16 @@ export default function Admin() {
 
   // Auto populate editingDrama if in editDrama tab
   useEffect(() => {
-    if (activeTab === 'editDrama' && !editingDrama && dramas.length > 0) {
-      const target = dramas.find((d) => d.id === selectedDramaId) || dramas[0];
-      if (target) {
-        startEditingDrama(target);
+    if (activeTab === 'editDrama' && dramas.length > 0) {
+      const currentTargetId = selectedDramaIdRef.current || selectedDramaId;
+      if (!editingDrama || editingDrama.id !== currentTargetId) {
+        const target = dramas.find((d) => d.id === currentTargetId) || dramas[0];
+        if (target) {
+          startEditingDrama(target);
+        }
       }
     }
-  }, [activeTab, editingDrama, selectedDramaId, dramas]);
+  }, [activeTab, selectedDramaId, dramas]);
 
   const showMsg = (type, text) => {
     setMessage({ type, text });
@@ -455,6 +500,9 @@ export default function Admin() {
     if (res.success) {
       haptic.success();
       showMsg('success', 'បង្កើតរឿងភាគថ្មីបានជោគជ័យ! (Drama created successfully!)');
+      if (res.drama?.id) {
+        setSelectedDramaId(res.drama.id);
+      }
       await loadData();
       setActiveTabLocal('manage');
     } else {
@@ -472,6 +520,9 @@ export default function Admin() {
     if (res.success) {
       haptic.success();
       showMsg('success', 'បានលុបរឿងដោយជោគជ័យ! (Drama deleted successfully)');
+      if (selectedDramaIdRef.current === dramaId) {
+        setSelectedDramaId('');
+      }
       await loadData();
     } else {
       showMsg('error', res.message || 'Failed to delete drama');
@@ -482,6 +533,7 @@ export default function Admin() {
   const startEditingDrama = (drama) => {
     if (!drama) return;
     haptic.light();
+    setSelectedDramaId(drama.id);
     setEditingDrama({
       id: drama.id,
       title: drama.title || '',
@@ -516,6 +568,7 @@ export default function Admin() {
     if (res.success) {
       haptic.success();
       showMsg('success', `បានកែសម្រួលរឿង "${editingDrama.titleKm || editingDrama.title}" និងចងចាំចំនួនភាគ (${editingDrama.episodes?.length || 0} ភាគ) ដោយជោគជ័យ!`);
+      setSelectedDramaId(editingDrama.id);
       await loadData();
       setActiveTabLocal('manage');
     } else {
@@ -572,15 +625,21 @@ export default function Admin() {
   const handleAddEpisode = async (e) => {
     e.preventDefault();
     haptic.medium();
+    const targetDramaId = selectedDramaId || selectedDrama?.id;
+    if (!targetDramaId) {
+      showMsg('error', 'សូមជ្រើសរើសរឿងជាមុន (Please select a drama first)');
+      return;
+    }
     const cleanEpisode = {
       ...newEpisode,
       videoUrl: (newEpisode.videoUrl || '').trim(),
       autoBroadcast: autoBroadcastEp
     };
-    const res = await api.addEpisode(selectedDramaId, cleanEpisode, activePin);
+    const res = await api.addEpisode(targetDramaId, cleanEpisode, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបន្ថែមភាគទី ${newEpisode.episodeNumber} ដោយជោគជ័យ!`);
+      setSelectedDramaId(targetDramaId);
       await loadData();
       setActiveTabLocal('manage');
     } else {
@@ -592,6 +651,11 @@ export default function Admin() {
   const handleBatchAdd = async (e) => {
     e.preventDefault();
     haptic.medium();
+    const targetDramaId = selectedDramaId || selectedDrama?.id;
+    if (!targetDramaId) {
+      showMsg('error', 'សូមជ្រើសរើសរឿងជាមុន (Please select a drama first)');
+      return;
+    }
     const episodes = [];
     const start = Math.max(1, Number(batchData.startEp) || 1);
     const rawTotal = Number(batchData.totalEp) || 50;
@@ -617,10 +681,11 @@ export default function Admin() {
       });
     }
 
-    const res = await api.addEpisodesBatch(selectedDramaId, episodes, activePin);
+    const res = await api.addEpisodesBatch(targetDramaId, episodes, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបន្ថែម ${episodes.length} ភាគដោយជោគជ័យ! (Added ${episodes.length} episodes!)`);
+      setSelectedDramaId(targetDramaId);
       await loadData();
       setActiveTabLocal('manage');
     } else {
@@ -632,6 +697,11 @@ export default function Admin() {
   const handlePasteUrlsSubmit = async (e) => {
     e.preventDefault();
     haptic.medium();
+    const targetDramaId = selectedDramaId || selectedDrama?.id;
+    if (!targetDramaId) {
+      showMsg('error', 'សូមជ្រើសរើសរឿងជាមុន (Please select a drama first)');
+      return;
+    }
     const urls = pasteUrlsText
       .split('\n')
       .map((line) => {
@@ -663,11 +733,12 @@ export default function Admin() {
       });
     });
 
-    const res = await api.addEpisodesBatch(selectedDramaId, episodes, activePin);
+    const res = await api.addEpisodesBatch(targetDramaId, episodes, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបញ្ចូល ${episodes.length} ភាគដោយជោគជ័យ!`);
       setPasteUrlsText('');
+      setSelectedDramaId(targetDramaId);
       await loadData();
       setActiveTabLocal('manage');
     } else {
@@ -681,10 +752,12 @@ export default function Admin() {
       return;
     }
     haptic.warning();
-    const res = await api.deleteEpisode(dramaId, episodeId, activePin);
+    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+    const res = await api.deleteEpisode(targetDramaId, episodeId, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
+      setSelectedDramaId(targetDramaId);
       await loadData();
     } else {
       showMsg('error', res.message || 'Failed to delete episode');
@@ -708,10 +781,12 @@ export default function Admin() {
     }
 
     haptic.warning();
-    const res = await api.deleteAllEpisodes(dramaId, activePin);
+    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+    const res = await api.deleteAllEpisodes(targetDramaId, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង ${dramaTitle} រួចរាល់!`);
+      setSelectedDramaId(targetDramaId);
       await loadData();
     } else {
       showMsg('error', res.message || 'Failed to delete all episodes');
@@ -723,8 +798,9 @@ export default function Admin() {
     e.preventDefault();
     if (!editingEpisode) return;
     haptic.medium();
+    const targetDramaId = editingEpisode.dramaId || selectedDramaId || selectedDrama?.id;
     const res = await api.updateEpisode(
-      selectedDramaId,
+      targetDramaId,
       editingEpisode.id,
       editingEpisode,
       activePin
@@ -733,6 +809,7 @@ export default function Admin() {
       haptic.success();
       showMsg('success', `បានកែសម្រួលភាគ ${editingEpisode.episodeNumber} ដោយជោគជ័យ!`);
       setEditingEpisode(null);
+      setSelectedDramaId(targetDramaId);
       await loadData();
     } else {
       showMsg('error', res.message || 'Failed to update episode');
@@ -1023,7 +1100,7 @@ export default function Admin() {
             </label>
             <select
               value={selectedDramaId}
-              onChange={(e) => setSelectedDramaId(e.target.value)}
+              onChange={(e) => handleDramaChange(e.target.value)}
               className="w-full px-3 py-2.5 rounded-xl bg-gray-900 border border-white/10 text-white text-xs font-bold outline-none focus:border-purple-500"
             >
               {dramas.map((d) => (
@@ -1212,7 +1289,7 @@ export default function Admin() {
 
                     {/* Edit episode */}
                     <button
-                      onClick={() => setEditingEpisode({ ...ep })}
+                      onClick={() => setEditingEpisode({ ...ep, dramaId: selectedDrama.id })}
                       className="p-2 rounded-lg bg-white/5 text-blue-300 hover:text-blue-200 hover:bg-white/10"
                       title="Edit Episode"
                     >
@@ -1875,7 +1952,7 @@ export default function Admin() {
             <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿងគោលដៅ (Target Drama Series)</label>
             <select
               value={selectedDramaId}
-              onChange={(e) => setSelectedDramaId(e.target.value)}
+              onChange={(e) => handleDramaChange(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-indigo-500 font-bold"
             >
               {dramas.map((d) => (
@@ -1987,13 +2064,14 @@ export default function Admin() {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!selectedDramaId) {
+                    const targetDramaId = selectedDramaId || selectedDrama?.id;
+                    if (!targetDramaId) {
                       showMsg('error', 'សូមជ្រើសរើសរឿងជាមុន');
                       return;
                     }
                     const nextEpNum = (selectedDrama?.episodes?.length || 0) + 1;
                     const res = await api.addEpisode(
-                      selectedDramaId,
+                      targetDramaId,
                       {
                         episodeNumber: nextEpNum,
                         title: `Episode ${nextEpNum}`,
@@ -2006,6 +2084,7 @@ export default function Admin() {
                     if (res && res.success) {
                       haptic.success();
                       showMsg('success', `បានបន្ថែមភាគទី ${nextEpNum} ទៅកាន់រឿងដោយស្វ័យប្រវត្តិ!`);
+                      setSelectedDramaId(targetDramaId);
                       await loadData();
                       setActiveTabLocal('manage');
                     }
@@ -2510,12 +2589,12 @@ export default function Admin() {
             <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿង (Select Drama)</label>
             <select
               value={selectedDramaId}
-              onChange={(e) => setSelectedDramaId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-emerald-500"
+              onChange={(e) => handleDramaChange(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-emerald-500 font-bold"
             >
               {dramas.map((d) => (
                 <option key={d.id} value={d.id} className="bg-gray-900">
-                  {d.title} ({d.episodes?.length || 0} ភាគបច្ចុប្បន្ន)
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} — {d.episodes?.length || 0} ភាគបច្ចុប្បន្ន
                 </option>
               ))}
             </select>
@@ -2637,12 +2716,12 @@ export default function Admin() {
             <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿង (Select Drama)</label>
             <select
               value={selectedDramaId}
-              onChange={(e) => setSelectedDramaId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-rose-500"
+              onChange={(e) => handleDramaChange(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-rose-500 font-bold"
             >
               {dramas.map((d) => (
                 <option key={d.id} value={d.id} className="bg-gray-900">
-                  {d.title} ({d.episodes?.length || 0} ភាគបច្ចុប្បន្ន)
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} — {d.episodes?.length || 0} ភាគបច្ចុប្បន្ន
                 </option>
               ))}
             </select>
@@ -2753,12 +2832,12 @@ export default function Admin() {
             <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿង (Select Drama)</label>
             <select
               value={selectedDramaId}
-              onChange={(e) => setSelectedDramaId(e.target.value)}
-              className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-purple-500"
+              onChange={(e) => handleDramaChange(e.target.value)}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-purple-500 font-bold"
             >
               {dramas.map((d) => (
                 <option key={d.id} value={d.id} className="bg-gray-900">
-                  {d.title} ({d.episodes?.length || 0} ភាគ)
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} — {d.episodes?.length || 0} ភាគ
                 </option>
               ))}
             </select>
@@ -3041,7 +3120,10 @@ export default function Admin() {
               value={editingDrama.id}
               onChange={(e) => {
                 const target = dramas.find((d) => d.id === e.target.value);
-                if (target) startEditingDrama(target);
+                if (target) {
+                  handleDramaChange(target.id);
+                  startEditingDrama(target);
+                }
               }}
               className="w-full mt-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-bold"
             >
@@ -3183,7 +3265,10 @@ export default function Admin() {
               value={selectedDramaId}
               onChange={(e) => {
                 const drama = dramas.find((d) => d.id === e.target.value);
-                if (drama) startEditingDrama(drama);
+                if (drama) {
+                  handleDramaChange(drama.id);
+                  startEditingDrama(drama);
+                }
               }}
               className="w-full px-3 py-2.5 rounded-xl bg-gray-900 border border-white/10 text-white text-xs font-bold outline-none focus:border-blue-500"
             >
