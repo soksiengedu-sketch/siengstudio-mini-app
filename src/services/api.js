@@ -225,6 +225,19 @@ export const api = {
     }
   },
 
+  async approveManualPayment(md5, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/payment/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        body: JSON.stringify({ md5 })
+      });
+      return await res.json();
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  },
+
   async createStarsInvoice(data) {
     try {
       const res = await fetch(`${API_BASE}/stars/create-invoice`, {

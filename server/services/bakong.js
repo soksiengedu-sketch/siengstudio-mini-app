@@ -26,13 +26,10 @@ export const generatePaymentQR = async ({
   const billNumber = `SS${Date.now().toString().slice(-6)}`;
   const expirationTimestamp = Date.now() + 15 * 60 * 1000; // 15 mins expiry
 
-  const cleanMobile = accountId.includes('@') ? accountId.split('@')[0].trim() : accountId;
-
   const optionalData = {
     currency: selectedCurrency,
     amount: amountToCharge,
     billNumber,
-    mobileNumber: cleanMobile,
     storeLabel: 'SiengStudio',
     terminalLabel: 'AppPay',
     expirationTimestamp
@@ -147,4 +144,64 @@ export const markPaymentCompleted = (md5) => {
     return payment;
   }
   return null;
+};
+
+// Check if a Bakong Account ID exists on the National Bank of Cambodia network
+export const verifyBakongAccount = async (accountId) => {
+  if (!accountId || typeof accountId !== 'string') {
+    return { exists: false, message: 'សូមបញ្ចូល Bakong Account ID' };
+  }
+  const cleanId = accountId.trim();
+  try {
+    const response = await fetch('https://api-bakong.nbc.gov.kh/v1/check_bakong_account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: cleanId })
+    });
+    const data = await response.json();
+    const exists = data?.responseCode === 0;
+    return {
+      success: true,
+      exists,
+      responseCode: data?.responseCode,
+      errorCode: data?.errorCode,
+      message: exists
+        ? 'គណនីត្រឹមត្រូវ និងដំណើរការលើប្រព័ន្ធ Bakong ✅'
+        : 'រកមិនឃើញគណនីនេះក្នុងប្រព័ន្ធ Bakong ទេ។ សូមពិនិត្យអក្ខរាវិរុទ្ធ ឬបើកដំណើរការ Bakong ក្នុង App ធនាគាររបស់អ្នក',
+      accountId: cleanId
+    };
+  } catch (err) {
+    return {
+      success: false,
+      exists: false,
+      message: `មិនអាចភ្ជាប់ទៅកាន់ម៉ាស៊ីនមេ Bakong: ${err.message}`,
+      accountId: cleanId
+    };
+  }
+};
+
+// Decode any raw KHQR code string (from ACLEDA, ABA, Wing, etc.)
+export const decodeKhqrPayload = (qrString) => {
+  if (!qrString || typeof qrString !== 'string') {
+    return { success: false, message: 'ទិន្នន័យ KHQR មិនត្រឹមត្រូវ' };
+  }
+  try {
+    const cleanQr = qrString.trim();
+    const decoded = BakongKHQR.decode(cleanQr);
+    if (decoded && decoded.data) {
+      const d = decoded.data;
+      return {
+        success: true,
+        data: d,
+        bakongAccountID: d.bakongAccountID || d.merchantID || null,
+        merchantName: d.merchantName || null,
+        currency: d.transactionCurrency === '116' ? 'KHR' : d.transactionCurrency === '840' ? 'USD' : d.transactionCurrency,
+        amount: d.transactionAmount || null,
+        merchantCity: d.merchantCity || null
+      };
+    }
+    return { success: false, message: 'មិនអាចបកស្រាយទិន្នន័យ KHQR បានទេ' };
+  } catch (err) {
+    return { success: false, message: err.message || 'Error decoding KHQR' };
+  }
 };

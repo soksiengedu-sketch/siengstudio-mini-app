@@ -35,6 +35,16 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // Up to 500 MB video size
 });
 
+// Admin Middleware Check
+const checkAdminPin = (req, res, next) => {
+  const pin = req.headers['x-admin-pin'] || req.body?.adminPin || req.query?.adminPin;
+  const configuredPin = process.env.ADMIN_PIN || '88@48*';
+  if (!pin || String(pin) !== String(configuredPin)) {
+    return res.status(401).json({ success: false, message: 'Invalid Admin PIN' });
+  }
+  next();
+};
+
 // --- API Routes ---
 
 // Get all dramas
@@ -124,8 +134,8 @@ app.post('/api/user/history', (req, res) => {
   res.json(result);
 });
 
-// Top up coins (Simulated Bakong KHQR or Stars)
-app.post('/api/user/topup', (req, res) => {
+// Top up coins (Admin only manual adjustment)
+app.post('/api/user/topup', checkAdminPin, (req, res) => {
   const { telegramId, packageId, method } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
 
@@ -141,8 +151,8 @@ app.post('/api/user/topup', (req, res) => {
   res.json({ success: true, addedCoins, coins: result.coins });
 });
 
-// Upgrade VIP
-app.post('/api/user/vip', (req, res) => {
+// Upgrade VIP (Admin only manual adjustment)
+app.post('/api/user/vip', checkAdminPin, (req, res) => {
   const { telegramId, tier } = req.body;
   if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
   const result = db.upgradeVip(telegramId, tier || 'monthly');
@@ -204,27 +214,71 @@ app.post('/api/payment/check-status', async (req, res) => {
   }
 });
 
-// 3. Confirm / Instant Credit Payment
+// 3. User Payment Verification Request (Strict Check with NBC Bakong)
 app.post('/api/payment/confirm-now', async (req, res) => {
   try {
-    const { md5, telegramId, type, packageId, tier } = req.body;
-    markPaymentCompleted(md5);
-
-    if (type === 'coins') {
-      const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-      const addedCoins = packageCoinsMap[packageId] || 345;
-      const updated = db.topUpCoins(telegramId, addedCoins);
-      return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
-    } else if (type === 'vip') {
-      const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
-      if (tier === 'lite') {
-        db.topUpCoins(telegramId, 200);
-      }
-      const updatedUser = db.getUser(telegramId);
-      return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+    const { md5 } = req.body;
+    if (!md5) {
+      return res.status(400).json({ success: false, paid: false, message: 'Missing transaction identifier (md5)' });
     }
 
-    res.json({ success: true, paid: true });
+    const status = await checkPaymentStatus(md5);
+
+    if (status.paid && status.payment && !status.payment.isProcessed) {
+      status.payment.isProcessed = true;
+      const { telegramId, type, packageId, tier } = status.payment;
+      if (type === 'coins') {
+        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+        const addedCoins = packageCoinsMap[packageId] || 345;
+        const updated = db.topUpCoins(telegramId, addedCoins);
+        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
+      } else if (type === 'vip') {
+        const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
+        if (tier === 'lite') {
+          db.topUpCoins(telegramId, 200);
+        }
+        const updatedUser = db.getUser(telegramId);
+        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+      }
+    }
+
+    // Payment has not arrived or is not verified on Bakong network:
+    return res.json({
+      success: true,
+      paid: false,
+      message: 'មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។ សូមរង់ចាំបន្តិច ឬពិនិត្យមើលក្នុង App ធនាគាររបស់អ្នក។'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, paid: false, message: err.message });
+  }
+});
+
+// Admin Manual Payment Approval (Requires Admin PIN)
+app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
+  try {
+    const { md5 } = req.body;
+    if (!md5) return res.status(400).json({ success: false, message: 'Missing md5' });
+    const payment = markPaymentCompleted(md5);
+    if (!payment) return res.status(404).json({ success: false, message: 'Payment record not found or expired' });
+
+    if (!payment.isProcessed) {
+      payment.isProcessed = true;
+      const { telegramId, type, packageId, tier } = payment;
+      if (type === 'coins') {
+        const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
+        const addedCoins = packageCoinsMap[packageId] || 345;
+        const updated = db.topUpCoins(telegramId, addedCoins);
+        return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
+      } else if (type === 'vip') {
+        const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
+        if (tier === 'lite') {
+          db.topUpCoins(telegramId, 200);
+        }
+        const updatedUser = db.getUser(telegramId);
+        return res.json({ success: true, paid: true, isVip: true, vipTier: vipResult.vipTier, coins: updatedUser.coins, type });
+      }
+    }
+    res.json({ success: true, paid: true, message: 'Payment already approved' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -257,34 +311,22 @@ app.post('/api/stars/create-invoice', async (req, res) => {
   }
 });
 
-// Confirm / Credit Telegram Stars Payment (called when WebApp openInvoice returns status === 'paid')
+// Sync verified Telegram Stars payment from database (credited by Telegram Bot successful_payment)
 app.post('/api/stars/confirm', (req, res) => {
   try {
-    const { telegramId, type, packageId, tier } = req.body;
+    const { telegramId } = req.body;
     if (!telegramId) return res.status(400).json({ error: 'telegramId is required' });
 
-    if (type === 'coins') {
-      const packageCoinsMap = { 1: 200, 2: 345, 3: 1000, 4: 2700 };
-      const addedCoins = packageCoinsMap[packageId] || 345;
-      const updated = db.topUpCoins(telegramId, addedCoins);
-      return res.json({ success: true, paid: true, coins: updated.coins, addedCoins, type });
-    } else if (type === 'vip') {
-      const vipResult = db.upgradeVip(telegramId, tier || 'monthly');
-      if (tier === 'lite') {
-        db.topUpCoins(telegramId, 200);
-      }
-      const updatedUser = db.getUser(telegramId);
-      return res.json({
-        success: true,
-        paid: true,
-        isVip: true,
-        vipTier: vipResult.vipTier,
-        coins: updatedUser.coins,
-        type
-      });
-    }
+    const user = db.getUser(telegramId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ success: true, paid: true });
+    return res.json({
+      success: true,
+      paid: true,
+      coins: user.coins,
+      isVip: user.isVip,
+      vipTier: user.vipTier
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -299,16 +341,6 @@ app.post('/api/admin/verify-pin', (req, res) => {
   }
   return res.status(401).json({ success: false, message: 'Invalid Admin PIN' });
 });
-
-// Admin Middleware Check
-const checkAdminPin = (req, res, next) => {
-  const pin = req.headers['x-admin-pin'] || req.body.adminPin;
-  const configuredPin = process.env.ADMIN_PIN || '88@48*';
-  if (!pin || String(pin) !== String(configuredPin)) {
-    return res.status(401).json({ success: false, message: 'Invalid Admin PIN' });
-  }
-  next();
-};
 
 // Admin: Add Drama
 app.post('/api/admin/dramas', checkAdminPin, (req, res) => {

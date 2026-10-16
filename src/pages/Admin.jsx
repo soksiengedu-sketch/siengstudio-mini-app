@@ -118,6 +118,84 @@ export default function Admin() {
 
   const selectedDrama = dramas.find((d) => d.id === selectedDramaId) || dramas[0];
 
+  // --- Bakong KHQR Diagnostics States ---
+  const [bakongConfig, setBakongConfig] = useState(null);
+  const [bakongVerifyLoading, setBakongVerifyLoading] = useState(false);
+  const [bakongVerifyResult, setBakongVerifyResult] = useState(null);
+  const [testBakongId, setTestBakongId] = useState('');
+  const [testBakongLoading, setTestBakongLoading] = useState(false);
+  const [testBakongResult, setTestBakongResult] = useState(null);
+  const [khqrDecodeText, setKhqrDecodeText] = useState('');
+  const [khqrDecodeResult, setKhqrDecodeResult] = useState(null);
+  const [manualMd5, setManualMd5] = useState('');
+  const [manualApproveLoading, setManualApproveLoading] = useState(false);
+  const [manualApproveResult, setManualApproveResult] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  const loadBakongConfig = async () => {
+    try {
+      const cfg = await api.getBakongConfig();
+      if (cfg) setBakongConfig(cfg);
+    } catch (e) {}
+  };
+
+  const handleVerifyServerBakong = async () => {
+    setBakongVerifyLoading(true);
+    setBakongVerifyResult(null);
+    try {
+      const res = await api.verifyBakongAccount(bakongConfig?.accountId || '855885688848@aclb');
+      setBakongVerifyResult(res);
+    } catch (e) {
+      setBakongVerifyResult({ exists: false, message: e.message });
+    } finally {
+      setBakongVerifyLoading(false);
+    }
+  };
+
+  const handleTestCustomBakongId = async () => {
+    if (!testBakongId.trim()) return;
+    setTestBakongLoading(true);
+    setTestBakongResult(null);
+    try {
+      const res = await api.verifyBakongAccount(testBakongId.trim());
+      setTestBakongResult(res);
+    } catch (e) {
+      setTestBakongResult({ exists: false, message: e.message });
+    } finally {
+      setTestBakongLoading(false);
+    }
+  };
+
+  const handleDecodeKhqrString = async () => {
+    if (!khqrDecodeText.trim()) return;
+    try {
+      const res = await api.decodeKhqr(khqrDecodeText.trim());
+      setKhqrDecodeResult(res);
+      if (res && res.success && res.bakongAccountID) {
+        setTestBakongId(res.bakongAccountID);
+      }
+    } catch (e) {
+      setKhqrDecodeResult({ success: false, message: e.message });
+    }
+  };
+
+  const handleManualApprovePayment = async () => {
+    if (!manualMd5.trim()) return;
+    setManualApproveLoading(true);
+    setManualApproveResult(null);
+    try {
+      const res = await api.approveManualPayment(manualMd5.trim(), authenticatedAdminPin);
+      setManualApproveResult(res);
+      if (res && res.paid) {
+        haptic.success();
+      }
+    } catch (e) {
+      setManualApproveResult({ success: false, message: e.message });
+    } finally {
+      setManualApproveLoading(false);
+    }
+  };
+
   const loadAnalytics = async () => {
     setLoadingAnalytics(true);
     try {
@@ -740,6 +818,20 @@ export default function Admin() {
           }`}
         >
           ☁️ Upload R2
+        </button>
+        <button
+          onClick={() => {
+            haptic.light();
+            loadBakongConfig();
+            setActiveTabLocal('bakong');
+          }}
+          className={`px-3 py-2 rounded-xl shrink-0 transition-all ${
+            activeTab === 'bakong'
+              ? 'bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-md'
+              : 'text-rose-400 hover:text-rose-300'
+          }`}
+        >
+          💳 Bakong KHQR
         </button>
         <button
           onClick={() => {
@@ -1998,6 +2090,265 @@ export default function Admin() {
                 className="w-full h-full object-contain"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB: BAKONG KHQR MANAGEMENT & DIAGNOSTICS ================= */}
+      {activeTab === 'bakong' && (
+        <div className="mt-4 space-y-4">
+          {/* Header Banner */}
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-rose-950/60 via-red-900/40 to-black border border-rose-500/30 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-rose-600/30 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/40">
+              <span className="font-black text-sm">KH</span>
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-white">ប្រព័ន្ធគ្រប់គ្រង និងផ្ទៀងផ្ទាត់ Bakong KHQR (Diagnostics)</h3>
+              <p className="text-[11px] text-gray-300 mt-0.5 leading-relaxed">
+                ដោះស្រាយបញ្ហា "លេខគណនីមិនត្រឹមត្រូវ" ដោយផ្ទៀងផ្ទាត់គណនីរបស់អ្នកផ្ទាល់ជាមួយប្រព័ន្ធកណ្តាលរបស់ធនាគារជាតិនៃកម្ពុជា (NBC Bakong Switch)។
+              </p>
+            </div>
+          </div>
+
+          {/* Section 1: Server Config Status */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>⚙️</span>
+                <span>ការកំណត់បច្ចុប្បន្នលើ Render Server:</span>
+              </h4>
+              <button
+                onClick={loadBakongConfig}
+                className="text-[10px] text-gray-400 hover:text-white flex items-center gap-1"
+              >
+                <RefreshCw size={11} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                <span className="text-[10px] text-gray-400 block">BAKONG_ACCOUNT_ID:</span>
+                <span className="font-mono font-bold text-amber-300 break-all">
+                  {bakongConfig?.accountId || '855885688848@aclb'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                <span className="text-[10px] text-gray-400 block">MERCHANT_NAME:</span>
+                <span className="font-bold text-white">
+                  {bakongConfig?.merchantName || 'CHAN SOKSIENG'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                <span className="text-[10px] text-gray-400 block">BAKONG_API_TOKEN:</span>
+                <span className={bakongConfig?.hasApiToken ? 'text-emerald-400 font-bold' : 'text-amber-400 font-medium'}>
+                  {bakongConfig?.hasApiToken ? '✅ បានកំណត់ (Active)' : '⚠️ មិនទាន់កំណត់ (Manual Mode)'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
+                <span className="text-[10px] text-gray-400 block">MERCHANT_CITY:</span>
+                <span className="text-gray-200">{bakongConfig?.merchantCity || 'Phnom Penh'}</span>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                onClick={handleVerifyServerBakong}
+                disabled={bakongVerifyLoading}
+                className="w-full py-2.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/50 text-rose-200 font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                {bakongVerifyLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>កំពុងសាកល្បងភ្ជាប់ទៅ NBC Bakong Switch...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck size={14} />
+                    <span>🔍 ផ្ទៀងផ្ទាត់គណនីបច្ចុប្បន្នជាមួយ NBC Bakong (Live Test)</span>
+                  </>
+                )}
+              </button>
+
+              {bakongVerifyResult && (
+                <div
+                  className={`mt-2.5 p-3 rounded-xl text-xs flex items-start gap-2 ${
+                    bakongVerifyResult.exists
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {bakongVerifyResult.exists ? (
+                    <CheckCircle size={16} className="shrink-0 text-emerald-400 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={16} className="shrink-0 text-rose-400 mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-bold">
+                      {bakongVerifyResult.exists
+                        ? 'គណនីត្រឹមត្រូវ និងដំណើរការលើប្រព័ន្ធ Bakong! ✅'
+                        : 'លេខគណនីមិនត្រឹមត្រូវ ឬរកមិនឃើញលើប្រព័ន្ធ Bakong ❌'}
+                    </p>
+                    <p className="text-[11px] mt-0.5 text-gray-300 leading-relaxed">
+                      {bakongVerifyResult.exists
+                        ? 'គណនីនេះអាចទទួលការផ្ទេរប្រាក់ពីគ្រប់ធនាគារក្នុងស្រុកទាំងអស់ដោយគ្មានបញ្ហា។'
+                        : `មូលហេតុ៖ ${bakongVerifyResult.message}។ (ប្រសិនបើសាកល្បង scan QR ហើយធនាគារបង្ហាញ "លេខគណនីមិនត្រឹមត្រូវ" គឺដោយសារ Bakong ID នេះមិនទាន់ត្រឹមត្រូវ ឬមិនទាន់បាន Activate ក្នុង Mobile Banking)។`}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 2: KHQR String Decoder */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>📷</span>
+              <span>ដកស្រង់ Bakong ID ពី KHQR ពិតប្រាកដ (KHQR Decoder):</span>
+            </h4>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              បើក App ធនាគាររបស់អ្នក (ACLEDA / ABA / Wing) -&gt; ចូលទៅកាន់ "KHQR" ឬ "ទទួលប្រាក់" -&gt; Scan ឬ Copy អក្សរកូដ KHQR (ចាប់ផ្តើមដោយ <code>000201...</code>) មកបិទភ្ជាប់ទីនេះ៖
+            </p>
+
+            <textarea
+              value={khqrDecodeText}
+              onChange={(e) => setKhqrDecodeText(e.target.value)}
+              placeholder="00020101021229..."
+              rows={3}
+              className="w-full p-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-[11px] outline-none focus:border-rose-500 break-all"
+            />
+
+            <button
+              onClick={handleDecodeKhqrString}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            >
+              <Sparkles size={14} />
+              <span>បកស្រាយកូដ KHQR (Decode Payload)</span>
+            </button>
+
+            {khqrDecodeResult && (
+              <div className="mt-2.5 p-3 rounded-xl bg-black/60 border border-white/15 space-y-2 text-xs">
+                {khqrDecodeResult.success ? (
+                  <>
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <span className="text-gray-400">Bakong Account ID:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-amber-300">
+                          {khqrDecodeResult.bakongAccountID}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(khqrDecodeResult.bakongAccountID);
+                            setCopiedId(true);
+                            haptic.success();
+                            setTimeout(() => setCopiedId(false), 2000);
+                          }}
+                          className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold"
+                        >
+                          {copiedId ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <span className="text-gray-400">ឈ្មោះម្ចាស់គណនី:</span>
+                      <span className="font-bold text-white">{khqrDecodeResult.merchantName}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">រូបិយប័ណ្ណ (Currency):</span>
+                      <span className="font-bold text-emerald-400">{khqrDecodeResult.currency}</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-300/90 pt-1">
+                      💡 យក Bakong Account ID ខាងលើទៅដាក់ក្នុង Render Environment Variables: <code>BAKONG_ACCOUNT_ID</code>
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-rose-400">{khqrDecodeResult.message}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Section 3: Live Account Tester */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>🧪</span>
+              <span>សាកល្បង Bakong ID ផ្សេងទៀត (Live NBC Checker):</span>
+            </h4>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={testBakongId}
+                onChange={(e) => setTestBakongId(e.target.value)}
+                placeholder="ឧ. 001234567@abaa ឬ 0885688848@aclb"
+                className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs outline-none focus:border-rose-500"
+              />
+              <button
+                onClick={handleTestCustomBakongId}
+                disabled={testBakongLoading}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs shrink-0 active:scale-95"
+              >
+                {testBakongLoading ? <Loader2 size={14} className="animate-spin" /> : 'ពិនិត្យ (Test)'}
+              </button>
+            </div>
+
+            {testBakongResult && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                  testBakongResult.exists
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                }`}
+              >
+                {testBakongResult.exists ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
+                <span>{testBakongResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Section 4: Manual Payment Approval Tool (Admin Only) */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>🛡️</span>
+              <span>អនុម័តការបង់ប្រាក់ដោយផ្ទាល់ (Manual Approval with Admin PIN):</span>
+            </h4>
+            <p className="text-[11px] text-gray-400">
+              ក្នុងករណីអតិថិជនបានផ្ទេរប្រាក់ដោយជោគជ័យតាមធនាគារ ហើយបានផ្ញើស្លីប (Receipt) មកកាន់ Telegram អ្នកអាចបញ្ចូល <code>md5</code> នៃវិក្កយបត្រដើម្បីអនុម័តបញ្ចូលកាក់ជូនភ្លាមៗ៖
+            </p>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={manualMd5}
+                onChange={(e) => setManualMd5(e.target.value)}
+                placeholder="md5 hash (ឧ. 4c3a2f1e...)"
+                className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs outline-none focus:border-emerald-500"
+              />
+              <button
+                onClick={handleManualApprovePayment}
+                disabled={manualApproveLoading}
+                className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs shrink-0 active:scale-95 flex items-center gap-1"
+              >
+                {manualApproveLoading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                <span>Approve & Credit</span>
+              </button>
+            </div>
+
+            {manualApproveResult && (
+              <div
+                className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                  manualApproveResult.paid
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                    : 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                }`}
+              >
+                {manualApproveResult.paid ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
+                <span>
+                  {manualApproveResult.paid
+                    ? `✓ បានអនុម័ត និងបញ្ចូលកាក់ (${manualApproveResult.addedCoins || ''} កាក់) ដោយជោគជ័យ!`
+                    : manualApproveResult.message}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

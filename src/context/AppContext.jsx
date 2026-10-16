@@ -284,36 +284,12 @@ export const AppProvider = ({ children }) => {
     return { success: false, message: res.message };
   };
 
-  const topUpCoins = async (packageId, method) => {
-    haptic.success();
-    const res = await api.topUpCoins(user.id, packageId, method);
-    if (res.success) {
-      setCoins((prev) => prev + res.addedCoins);
-      setIsCoinModalOpen(false);
-      try {
-        confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
-      } catch (e) {}
-      return true;
-    }
-    return false;
+  const topUpCoins = () => {
+    setIsCoinModalOpen(true);
   };
 
-  const upgradeVip = async (tier) => {
-    haptic.success();
-    const res = await api.upgradeVip(user.id, tier);
-    if (res.success) {
-      setIsVip(true);
-      setVipTier(tier);
-      if (tier === 'lite') {
-        setCoins((prev) => prev + 200); // 200 instant bonus coins for Lite VIP
-      }
-      setIsCoinModalOpen(false);
-      try {
-        confetti({ particleCount: 120, spread: 90, origin: { y: 0.5 } });
-      } catch (e) {}
-      return true;
-    }
-    return false;
+  const upgradeVip = () => {
+    setIsCoinModalOpen(true);
   };
 
   return (

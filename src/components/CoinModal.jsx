@@ -12,7 +12,8 @@ import {
   Loader2,
   ArrowLeft,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { haptic, openTelegramInvoice } from '../services/telegram';
 import { api } from '../services/api';
@@ -43,6 +44,7 @@ export default function CoinModal() {
 
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
   const [generatedKhqr, setGeneratedKhqr] = useState(null);
   const pollIntervalRef = useRef(null);
 
@@ -51,6 +53,7 @@ export default function CoinModal() {
     if (isCoinModalOpen) {
       setModalStep('select');
       setIsProcessing(false);
+      setPaymentError(null);
       setGeneratedKhqr(null);
     } else {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -279,80 +282,97 @@ export default function CoinModal() {
     }, 2000);
   };
 
-  const handleInstantConfirm = async () => {
+  // Handle Verified Telegram Stars Checkout
+  const handlePayStars = async () => {
     setIsProcessing(true);
+    setPaymentError(null);
     haptic.medium();
 
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-    if (paymentMethod === 'stars') {
-      const starsAmount = activeSubTab === 'coins' ? currentCoinPkg.stars : currentVipPkg.stars;
-      const itemTitle = activeSubTab === 'coins'
-        ? `SiengStudio: ${currentCoinPkg.totalCoins} Coins Pack`
-        : `SiengStudio: ${currentVipPkg.name}`;
-
-      try {
-        const invoiceRes = await api.createStarsInvoice({
-          telegramId: user?.id || 'demo_user',
-          type: activeSubTab,
-          packageId: currentCoinPkg.id,
-          tier: currentVipPkg.id,
-          starsAmount,
-          title: itemTitle,
-          description: `Instant unlock on SiengStudio Telegram Mini App`
-        });
-
-        if (invoiceRes && invoiceRes.success && invoiceRes.invoiceLink) {
-          const status = await openTelegramInvoice(invoiceRes.invoiceLink);
-          if (status === 'paid') {
-            const confirmRes = await api.confirmStarsPayment({
-              telegramId: user?.id || 'demo_user',
-              type: activeSubTab,
-              packageId: currentCoinPkg.id,
-              tier: currentVipPkg.id
-            });
-            setIsProcessing(false);
-            handleSuccessAction(confirmRes);
-            return;
-          } else if (status === 'cancelled') {
-            setIsProcessing(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Telegram Stars invoice error:', err);
-      }
-
-      // Fallback credit if running in local dev / test browser
-      try {
-        const confirmRes = await api.confirmStarsPayment({
-          telegramId: user?.id || 'demo_user',
-          type: activeSubTab,
-          packageId: currentCoinPkg.id,
-          tier: currentVipPkg.id
-        });
-        setIsProcessing(false);
-        handleSuccessAction(confirmRes);
-      } catch (err) {
-        setIsProcessing(false);
-        handleSuccessAction({ success: true, coins: coins + currentCoinPkg.totalCoins });
-      }
-      return;
-    }
+    const starsAmount = activeSubTab === 'coins' ? currentCoinPkg.stars : currentVipPkg.stars;
+    const itemTitle = activeSubTab === 'coins'
+      ? `SiengStudio: ${currentCoinPkg.totalCoins} Coins Pack`
+      : `SiengStudio: ${currentVipPkg.name}`;
 
     try {
-      const res = await api.confirmPaymentNow({
-        md5: generatedKhqr?.md5,
+      const invoiceRes = await api.createStarsInvoice({
         telegramId: user?.id || 'demo_user',
         type: activeSubTab,
         packageId: currentCoinPkg.id,
-        tier: currentVipPkg.id
+        tier: currentVipPkg.id,
+        starsAmount,
+        title: itemTitle,
+        description: `Instant unlock on SiengStudio Telegram Mini App`
       });
+
+      if (!invoiceRes || !invoiceRes.success || !invoiceRes.invoiceLink) {
+        setIsProcessing(false);
+        haptic.error();
+        setPaymentError(invoiceRes?.message || (lang === 'km' ? 'មិនអាចបង្កើតវិក្កយបត្រ Stars បានទេ' : 'Failed to create Stars invoice'));
+        return;
+      }
+
+      const status = await openTelegramInvoice(invoiceRes.invoiceLink);
+      if (status === 'paid') {
+        // User successfully paid in Telegram!
+        // Wait 1.5s for Telegram Bot to process message:successful_payment
+        await new Promise((r) => setTimeout(r, 1500));
+        const syncRes = await api.confirmStarsPayment({
+          telegramId: user?.id || 'demo_user'
+        });
+        setIsProcessing(false);
+        if (syncRes && syncRes.coins !== undefined) {
+          setCoins(syncRes.coins);
+          if (syncRes.isVip) {
+            setIsVip(true);
+            if (setVipTier) setVipTier(syncRes.vipTier);
+          }
+        }
+        handleSuccessAction(syncRes);
+      } else if (status === 'cancelled') {
+        setIsProcessing(false);
+        setPaymentError(lang === 'km' ? 'ការទូទាត់ត្រូវបានបោះបង់ (Payment cancelled)' : 'Payment was cancelled');
+      } else {
+        setIsProcessing(false);
+        setPaymentError(lang === 'km' ? 'ការទូទាត់មិនទាន់បានសម្រេច (Payment incomplete)' : 'Payment incomplete');
+      }
+    } catch (err) {
+      console.warn('Stars payment error:', err);
       setIsProcessing(false);
-      handleSuccessAction(res);
+      haptic.error();
+      setPaymentError(lang === 'km' ? 'មានបញ្ហាក្នុងដំណើរការទូទាត់ Stars' : 'Error processing Stars payment');
+    }
+  };
+
+  // Handle Verified Bakong KHQR Status Check
+  const handleCheckPayment = async () => {
+    if (!generatedKhqr?.md5) return;
+    setIsProcessing(true);
+    setPaymentError(null);
+    haptic.medium();
+
+    try {
+      const checkRes = await api.checkPaymentStatus(generatedKhqr.md5);
+      if (checkRes && checkRes.paid) {
+        setIsProcessing(false);
+        handleSuccessAction(checkRes);
+      } else {
+        setIsProcessing(false);
+        haptic.error();
+        setPaymentError(
+          checkRes?.message ||
+          (lang === 'km'
+            ? '⚠️ មិនទាន់រកឃើញការផ្ទេរប្រាក់ក្នុងប្រព័ន្ធ Bakong ទេ។ ប្រសិនបើអ្នកទើបតែផ្ទេរប្រាក់រួច សូមរង់ចាំ ៥-១០ វិនាទី រួចចុចពិនិត្យម្តងទៀត។'
+            : '⚠️ Payment not yet detected in Bakong. If you just transferred, please wait 5-10 seconds and try again.')
+        );
+      }
     } catch (err) {
       setIsProcessing(false);
-      handleSuccessAction({ success: true, coins: coins + currentCoinPkg.totalCoins });
+      haptic.error();
+      setPaymentError(
+        lang === 'km'
+          ? 'មិនអាចទាក់ទងម៉ាស៊ីនមេដើម្បីពិនិត្យការទូទាត់បានទេ។ សូមព្យាយាមម្តងទៀត។'
+          : 'Could not connect to payment server. Please try again.'
+      );
     }
   };
 
@@ -657,13 +677,19 @@ export default function CoinModal() {
                     {activeSubTab === 'coins' ? currentCoinPkg.stars : currentVipPkg.stars} Telegram Stars
                   </p>
                 </div>
+                {paymentError && (
+                  <div className="w-full p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-center gap-1.5">
+                    <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                    <span>{paymentError}</span>
+                  </div>
+                )}
                 <button
-                  onClick={handleInstantConfirm}
+                  onClick={handlePayStars}
                   disabled={isProcessing}
                   className="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-600 text-black font-extrabold text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
                   {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Star size={16} className="fill-black" />}
-                  <span>{isProcessing ? 'Processing Stars...' : 'Pay with Telegram Stars'}</span>
+                  <span>{isProcessing ? 'កំពុងដំណើរការ Stars...' : 'Pay with Telegram Stars'}</span>
                 </button>
               </div>
             ) : (
@@ -715,24 +741,36 @@ export default function CoinModal() {
                   បើកកម្មវិធី <strong>ACLEDA Mobile</strong>, <strong>ABA</strong>, ឬធនាគារណាក៏បាន ដើម្បីស្កេនបង់ប្រាក់
                 </p>
 
-                {/* Instant Confirm / Test Action Button */}
+                {/* Error Banner if not detected on Bakong */}
+                {paymentError && (
+                  <div className="w-full mt-3 p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs text-left flex items-start gap-2 shadow-inner">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-400" />
+                    <span className="leading-relaxed">{paymentError}</span>
+                  </div>
+                )}
+
+                {/* Verified Payment Check Action Button */}
                 <button
-                  onClick={handleInstantConfirm}
+                  onClick={handleCheckPayment}
                   disabled={isProcessing}
-                  className="w-full mt-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-black text-xs shadow-lg shadow-emerald-500/20 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                  className="w-full mt-3 py-3 rounded-2xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 text-white font-black text-xs shadow-lg shadow-rose-600/25 active:scale-95 transition-transform flex items-center justify-center gap-2"
                 >
                   {isProcessing ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      <span>កំពុងផ្ទៀងផ្ទាត់...</span>
+                      <span>កំពុងពិនិត្យជាមួយប្រព័ន្ធ Bakong...</span>
                     </>
                   ) : (
                     <>
-                      <Check size={16} />
-                      <span>✓ ខ្ញុំបានផ្ទេររួចហើយ (បញ្ជាក់ការទូទាត់)</span>
+                      <RefreshCw size={15} />
+                      <span>🔍 ពិនិត្យការផ្ទេរប្រាក់ (Check Payment Status)</span>
                     </>
                   )}
                 </button>
+
+                <p className="text-[10px] text-gray-500 mt-2 font-mono">
+                  វិក្កយបត្រ #{generatedKhqr?.billNumber || 'SS000000'} • ប្រព័ន្ធស្វែងរកការផ្ទេរប្រាក់ស្វ័យប្រវត្តិ
+                </p>
               </div>
             )}
           </div>
