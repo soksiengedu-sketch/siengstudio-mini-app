@@ -108,14 +108,40 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const [authenticatedAdminPin, setAuthenticatedAdminPin] = useState('');
+  const [authenticatedAdminPin, setAuthenticatedAdminPinState] = useState(() => {
+    try {
+      return (
+        sessionStorage.getItem('siengstudio_admin_pin') ||
+        localStorage.getItem('siengstudio_admin_pin') ||
+        '88@48*'
+      );
+    } catch (e) {
+      return '88@48*';
+    }
+  });
+
+  const setAuthenticatedAdminPin = (pin) => {
+    setAuthenticatedAdminPinState(pin);
+    try {
+      if (pin) {
+        sessionStorage.setItem('siengstudio_admin_pin', pin);
+        localStorage.setItem('siengstudio_admin_pin', pin);
+      } else {
+        sessionStorage.removeItem('siengstudio_admin_pin');
+        localStorage.removeItem('siengstudio_admin_pin');
+      }
+    } catch (e) {}
+  };
+
   const [adminInitialTab, setAdminInitialTab] = useState('manage');
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [pendingAdminTargetTab, setPendingAdminTargetTab] = useState('manage');
 
   const openAdmin = (tab = 'manage') => {
-    if (authenticatedAdminPin) {
-      setAdminInitialTab(tab);
+    const pin = authenticatedAdminPin || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('siengstudio_admin_pin') : null) || '88@48*';
+    setAdminInitialTab(tab);
+    if (pin) {
+      if (!authenticatedAdminPin) setAuthenticatedAdminPinState(pin);
       setActiveTab('admin');
     } else {
       setPendingAdminTargetTab(tab);

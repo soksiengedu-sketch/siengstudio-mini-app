@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { api } from '../services/api';
+import { api, getSavedAdminPin } from '../services/api';
 import {
   ArrowLeft,
   Film,
@@ -44,6 +44,7 @@ import { haptic } from '../services/telegram';
 
 export default function Admin() {
   const { setActiveTab, authenticatedAdminPin, adminInitialTab, screenMode, toggleScreenMode, t, lang } = useApp();
+  const activePin = authenticatedAdminPin || getSavedAdminPin();
   const [dramas, setDramas] = useState([]);
   const [stats, setStats] = useState({ totalDramas: 0, totalEpisodes: 0, totalViews: 0 });
   const [activeTab, setActiveTabLocal] = useState(adminInitialTab || 'manage'); // 'manage' | 'addDrama' | 'editDrama' | 'addEpisode' | 'batchAdd' | 'pasteUrls'
@@ -140,7 +141,7 @@ export default function Admin() {
   const loadAdminPayments = async () => {
     setLoadingPayments(true);
     try {
-      const res = await api.getAdminPayments(authenticatedAdminPin);
+      const res = await api.getAdminPayments(activePin);
       if (res && res.success) {
         setAdminPayments(res.payments || []);
       }
@@ -204,7 +205,7 @@ export default function Admin() {
     setManualApproveLoading(true);
     setManualApproveResult(null);
     try {
-      const res = await api.approveManualPayment(manualMd5.trim(), authenticatedAdminPin);
+      const res = await api.approveManualPayment(manualMd5.trim(), activePin);
       setManualApproveResult(res);
       if (res && res.paid) {
         haptic.success();
@@ -243,7 +244,7 @@ export default function Admin() {
   const loadAnalytics = async () => {
     setLoadingAnalytics(true);
     try {
-      const data = await api.getAnalytics(authenticatedAdminPin);
+      const data = await api.getAnalytics(activePin);
       if (data && data.success) {
         setAnalytics(data);
       }
@@ -316,6 +317,16 @@ export default function Admin() {
     }
   }, [selectedDramaId, dramas]);
 
+  // Auto populate editingDrama if in editDrama tab
+  useEffect(() => {
+    if (activeTab === 'editDrama' && !editingDrama && dramas.length > 0) {
+      const target = dramas.find((d) => d.id === selectedDramaId) || dramas[0];
+      if (target) {
+        startEditingDrama(target);
+      }
+    }
+  }, [activeTab, editingDrama, selectedDramaId, dramas]);
+
   const showMsg = (type, text) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
@@ -338,7 +349,7 @@ export default function Admin() {
       target: broadcastTarget
     };
 
-    const res = await api.broadcastTelegram(payload, authenticatedAdminPin);
+    const res = await api.broadcastTelegram(payload, activePin);
     setIsBroadcasting(false);
     if (res && res.success) {
       haptic.success();
@@ -390,7 +401,7 @@ export default function Admin() {
         (percent) => {
           setVideoUploadProgress(percent);
         },
-        authenticatedAdminPin
+        activePin
       );
 
       if (res && res.success && res.url) {
@@ -440,7 +451,7 @@ export default function Admin() {
       genres: newDrama.genres.split(',').map((g) => g.trim()).filter(Boolean),
       autoBroadcast: autoBroadcastDrama
     };
-    const res = await api.createDrama(dramaData, authenticatedAdminPin);
+    const res = await api.createDrama(dramaData, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', 'បង្កើតរឿងភាគថ្មីបានជោគជ័យ! (Drama created successfully!)');
@@ -457,7 +468,7 @@ export default function Admin() {
       return;
     }
     haptic.warning();
-    const res = await api.deleteDrama(dramaId, authenticatedAdminPin);
+    const res = await api.deleteDrama(dramaId, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', 'បានលុបរឿងដោយជោគជ័យ! (Drama deleted successfully)');
@@ -501,7 +512,7 @@ export default function Admin() {
         ? editingDrama.genres.split(',').map((g) => g.trim()).filter(Boolean)
         : editingDrama.genres
     };
-    const res = await api.updateDrama(editingDrama.id, dramaData, authenticatedAdminPin);
+    const res = await api.updateDrama(editingDrama.id, dramaData, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានកែសម្រួលរឿង "${editingDrama.titleKm || editingDrama.title}" និងចងចាំចំនួនភាគ (${editingDrama.episodes?.length || 0} ភាគ) ដោយជោគជ័យ!`);
@@ -516,7 +527,7 @@ export default function Admin() {
   const handleDownloadBackup = async () => {
     haptic.medium();
     try {
-      const backup = await api.backupDatabase(authenticatedAdminPin);
+      const backup = await api.backupDatabase(activePin);
       const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backup, null, 2));
       const downloadAnchor = document.createElement('a');
       downloadAnchor.setAttribute('href', dataStr);
@@ -543,7 +554,7 @@ export default function Admin() {
         return;
       }
       const payload = Array.isArray(json) ? { dramas: json } : json;
-      const res = await api.importDatabase(payload, authenticatedAdminPin);
+      const res = await api.importDatabase(payload, activePin);
       if (res.success) {
         haptic.success();
         showMsg('success', `បានបញ្ចូលទិន្នន័យ ${payload.dramas.length} រឿង និងចងចាំគ្រប់ភាគដោយជោគជ័យ!`);
@@ -566,7 +577,7 @@ export default function Admin() {
       videoUrl: (newEpisode.videoUrl || '').trim(),
       autoBroadcast: autoBroadcastEp
     };
-    const res = await api.addEpisode(selectedDramaId, cleanEpisode, authenticatedAdminPin);
+    const res = await api.addEpisode(selectedDramaId, cleanEpisode, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបន្ថែមភាគទី ${newEpisode.episodeNumber} ដោយជោគជ័យ!`);
@@ -582,12 +593,14 @@ export default function Admin() {
     e.preventDefault();
     haptic.medium();
     const episodes = [];
-    const start = Number(batchData.startEp) || 1;
-    const total = Number(batchData.totalEp) || 50;
+    const start = Math.max(1, Number(batchData.startEp) || 1);
+    const rawTotal = Number(batchData.totalEp) || 50;
+    // If rawTotal < start, admin likely entered the count of episodes to add
+    const end = rawTotal < start ? (start + rawTotal - 1) : rawTotal;
     const freeUntil = Number(batchData.freeCount) || 10;
     const price = Number(batchData.coinPrice) || 20;
 
-    for (let i = start; i <= total; i++) {
+    for (let i = start; i <= end; i++) {
       const isFree = i <= freeUntil;
       const pad = String(i).padStart(2, '0');
       let url = (batchData.urlPattern || '').trim();
@@ -604,7 +617,7 @@ export default function Admin() {
       });
     }
 
-    const res = await api.addEpisodesBatch(selectedDramaId, episodes, authenticatedAdminPin);
+    const res = await api.addEpisodesBatch(selectedDramaId, episodes, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបន្ថែម ${episodes.length} ភាគដោយជោគជ័យ! (Added ${episodes.length} episodes!)`);
@@ -621,8 +634,11 @@ export default function Admin() {
     haptic.medium();
     const urls = pasteUrlsText
       .split('\n')
-      .map((u) => u.trim())
-      .filter((u) => u.startsWith('http'));
+      .map((line) => {
+        const match = line.match(/(https?:\/\/[^\s"'<>\)]+)/i);
+        return match ? match[1].trim() : null;
+      })
+      .filter(Boolean);
 
     if (urls.length === 0) {
       showMsg('error', 'សូមបញ្ចូល URL វីដេអូយ៉ាងហោចណាស់ ១ (Please provide at least 1 valid URL)');
@@ -647,7 +663,7 @@ export default function Admin() {
       });
     });
 
-    const res = await api.addEpisodesBatch(selectedDramaId, episodes, authenticatedAdminPin);
+    const res = await api.addEpisodesBatch(selectedDramaId, episodes, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានបញ្ចូល ${episodes.length} ភាគដោយជោគជ័យ!`);
@@ -665,7 +681,7 @@ export default function Admin() {
       return;
     }
     haptic.warning();
-    const res = await api.deleteEpisode(dramaId, episodeId, authenticatedAdminPin);
+    const res = await api.deleteEpisode(dramaId, episodeId, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
@@ -677,14 +693,22 @@ export default function Admin() {
 
   // --- Delete ALL Episodes ---
   const handleDeleteAllEpisodes = async (dramaId, dramaTitle) => {
-    const confirmation = window.prompt(
-      `⚠️ ប្រយ័ត្ន! តើអ្នកចង់លុបគ្រប់ភាគទាំងអស់នៃរឿង "${dramaTitle}" មែនទេ?\nវាយពាក្យ DELETE ដើម្បីបញ្ជាក់៖`
-    );
-    if (confirmation !== 'DELETE') {
-      return;
+    let confirmed = false;
+    try {
+      const confirmation = window.prompt(
+        `⚠️ ប្រយ័ត្ន! តើអ្នកចង់លុបគ្រប់ភាគទាំងអស់នៃរឿង "${dramaTitle}" មែនទេ?\nវាយពាក្យ DELETE ដើម្បីបញ្ជាក់៖`
+      );
+      if (confirmation === 'DELETE') confirmed = true;
+    } catch (e) {}
+
+    if (!confirmed) {
+      if (!window.confirm(`⚠️ តើអ្នកពិតជាចង់លុបគ្រប់ភាគទាំងអស់នៃរឿង "${dramaTitle}" មែនទេ? (Confirm delete all episodes)`)) {
+        return;
+      }
     }
+
     haptic.warning();
-    const res = await api.deleteAllEpisodes(dramaId, authenticatedAdminPin);
+    const res = await api.deleteAllEpisodes(dramaId, activePin);
     if (res.success) {
       haptic.success();
       showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង ${dramaTitle} រួចរាល់!`);
@@ -703,7 +727,7 @@ export default function Admin() {
       selectedDramaId,
       editingEpisode.id,
       editingEpisode,
-      authenticatedAdminPin
+      activePin
     );
     if (res.success) {
       haptic.success();
@@ -1977,7 +2001,7 @@ export default function Admin() {
                         coinPrice: nextEpNum <= 10 ? 0 : 20,
                         isFree: nextEpNum <= 10
                       },
-                      authenticatedAdminPin
+                      activePin
                     );
                     if (res && res.success) {
                       haptic.success();
@@ -2064,7 +2088,7 @@ export default function Admin() {
               <div>
                 <label className="text-[11px] font-bold text-gray-300">Video URL</label>
                 <input
-                  type="url"
+                  type="text"
                   required
                   value={editingEpisode.videoUrl}
                   onChange={(e) =>
@@ -2453,7 +2477,7 @@ export default function Admin() {
                         <button
                           onClick={async () => {
                             setManualMd5(p.md5);
-                            const res = await api.approveManualPayment(p.md5, authenticatedAdminPin);
+                            const res = await api.approveManualPayment(p.md5, activePin);
                             setManualApproveResult(res);
                             if (res && res.paid) {
                               haptic.success();
@@ -2793,7 +2817,7 @@ export default function Admin() {
               </button>
             </div>
             <input
-              type="url"
+              type="text"
               required
               value={newEpisode.videoUrl}
               onChange={(e) => setNewEpisode({ ...newEpisode, videoUrl: e.target.value })}
@@ -2928,7 +2952,7 @@ export default function Admin() {
           <div>
             <label className="text-[11px] font-bold text-gray-300">Poster Image URL (Vertical 3:4)</label>
             <input
-              type="url"
+              type="text"
               required
               value={newDrama.posterUrl}
               onChange={(e) => setNewDrama({ ...newDrama, posterUrl: e.target.value })}
@@ -2940,7 +2964,7 @@ export default function Admin() {
           <div>
             <label className="text-[11px] font-bold text-gray-300">Banner Backdrop Image URL (16:9)</label>
             <input
-              type="url"
+              type="text"
               value={newDrama.bannerUrl}
               onChange={(e) => setNewDrama({ ...newDrama, bannerUrl: e.target.value })}
               placeholder="https://pub-xxxx.r2.dev/banner.png"
@@ -3010,6 +3034,25 @@ export default function Admin() {
             </button>
           </div>
 
+          {/* Quick Drama Switcher within Edit Tab */}
+          <div>
+            <label className="text-[11px] font-bold text-gray-300">ជ្រើសរើសរឿងដែលត្រូវកែសម្រួល (Select Drama to Edit)</label>
+            <select
+              value={editingDrama.id}
+              onChange={(e) => {
+                const target = dramas.find((d) => d.id === e.target.value);
+                if (target) startEditingDrama(target);
+              }}
+              className="w-full mt-1 px-3 py-2 rounded-xl bg-gray-900 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-bold"
+            >
+              {dramas.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} ({d.episodes?.length || 0} ភាគ)
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="text-[11px] font-bold text-gray-300">Title (English ចំណងជើងអង់គ្លេស)</label>
             <input
@@ -3035,7 +3078,7 @@ export default function Admin() {
           <div>
             <label className="text-[11px] font-bold text-gray-300">Poster Image URL (Vertical 3:4)</label>
             <input
-              type="url"
+              type="text"
               required
               value={editingDrama.posterUrl}
               onChange={(e) => setEditingDrama({ ...editingDrama, posterUrl: e.target.value })}
@@ -3046,7 +3089,7 @@ export default function Admin() {
           <div>
             <label className="text-[11px] font-bold text-gray-300">Banner Backdrop Image URL (16:9)</label>
             <input
-              type="url"
+              type="text"
               value={editingDrama.bannerUrl}
               onChange={(e) => setEditingDrama({ ...editingDrama, bannerUrl: e.target.value })}
               className="w-full mt-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-blue-500 font-mono"
@@ -3125,6 +3168,34 @@ export default function Admin() {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Fallback Selector if activeTab === 'editDrama' and editingDrama is null */}
+      {activeTab === 'editDrama' && !editingDrama && (
+        <div className="mt-4 p-8 rounded-3xl bg-white/5 border border-white/10 text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/30">
+            <Edit3 size={24} />
+          </div>
+          <h4 className="text-sm font-bold text-white">សូមជ្រើសរើសរឿងដែលអ្នកចង់កែសម្រួល (Select Drama to Edit)</h4>
+          <p className="text-xs text-gray-400">ជ្រើសរើសរឿងភាគណាមួយខាងក្រោមដើម្បីកែប្រែចំណងជើង រូបភាព ឬព័ត៌មានផ្សេងៗ៖</p>
+          <div className="max-w-md mx-auto pt-2">
+            <select
+              value={selectedDramaId}
+              onChange={(e) => {
+                const drama = dramas.find((d) => d.id === e.target.value);
+                if (drama) startEditingDrama(drama);
+              }}
+              className="w-full px-3 py-2.5 rounded-xl bg-gray-900 border border-white/10 text-white text-xs font-bold outline-none focus:border-blue-500"
+            >
+              <option value="">-- ចុចទីនេះដើម្បីជ្រើសរើសរឿង --</option>
+              {dramas.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.titleKm ? `${d.titleKm} (${d.title})` : d.title} ({d.episodes?.length || 0} ភាគ)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       )}
     </div>
   );

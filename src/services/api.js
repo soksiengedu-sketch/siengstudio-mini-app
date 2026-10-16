@@ -31,6 +31,19 @@ export function updateLocalDrama(dramaId, updater) {
   } catch (e) {}
 }
 
+export function getSavedAdminPin(adminPin) {
+  if (adminPin && typeof adminPin === 'string' && adminPin.trim()) {
+    return adminPin.trim();
+  }
+  try {
+    const sessionPin = sessionStorage.getItem('siengstudio_admin_pin');
+    if (sessionPin && sessionPin.trim()) return sessionPin.trim();
+    const localPin = localStorage.getItem('siengstudio_admin_pin');
+    if (localPin && localPin.trim()) return localPin.trim();
+  } catch (e) {}
+  return '88@48*';
+}
+
 export const api = {
   async getDramas() {
     try {
@@ -161,7 +174,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/user/topup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin() },
         body: JSON.stringify({ telegramId, packageId, method })
       });
       return await res.json();
@@ -175,7 +188,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/user/vip`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin() },
         body: JSON.stringify({ telegramId, tier })
       });
       return await res.json();
@@ -229,7 +242,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/payment/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify({ md5 })
       });
       return await res.json();
@@ -241,7 +254,7 @@ export const api = {
   async getAdminPayments(adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/payments`, {
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       return await res.json();
     } catch (err) {
@@ -294,7 +307,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify(dramaData)
       });
       const data = await res.json();
@@ -316,7 +329,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify(dramaData)
       });
       const data = await res.json();
@@ -335,7 +348,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/episodes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify({ dramaId, ...episodeData })
       });
       const data = await res.json();
@@ -364,7 +377,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/episodes/batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify({ dramaId, episodes })
       });
       const data = await res.json();
@@ -391,7 +404,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes/${episodeId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       const data = await res.json();
       if (data.success && data.episodes) {
@@ -419,7 +432,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       const data = await res.json();
       if (data.success) {
@@ -445,7 +458,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes/${episodeId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify(episodeData)
       });
       const data = await res.json();
@@ -477,7 +490,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify({ episodes })
       });
       const data = await res.json();
@@ -504,7 +517,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       const data = await res.json();
       if (data.success) {
@@ -523,7 +536,7 @@ export const api = {
   async getAdminStats(adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/stats`, {
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       return await res.json();
     } catch (err) {
@@ -541,7 +554,7 @@ export const api = {
   async backupDatabase(adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/backup`, {
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       if (res.ok) return await res.json();
     } catch (err) {
@@ -554,7 +567,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/import`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify(jsonPayload)
       });
       const data = await res.json();
@@ -576,7 +589,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/broadcast`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify(broadcastData)
       });
       return await res.json();
@@ -589,7 +602,7 @@ export const api = {
   async getAnalytics(adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/analytics`, {
-        headers: { 'x-admin-pin': adminPin }
+        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
       });
       if (res.ok) {
         return await res.json();
@@ -635,7 +648,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/r2/presign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': adminPin },
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
         body: JSON.stringify({ fileName, contentType, folder })
       });
       return await res.json();
@@ -646,8 +659,9 @@ export const api = {
 
   uploadVideoFile(file, onProgress, adminPin) {
     return new Promise((resolve, reject) => {
+      const safePin = getSavedAdminPin(adminPin);
       // Step 1: Check presigned R2 URL first
-      this.getPresignedR2Url(file.name, file.type || 'video/mp4', 'videos', adminPin)
+      this.getPresignedR2Url(file.name, file.type || 'video/mp4', 'videos', safePin)
         .then((r2Info) => {
           if (r2Info && r2Info.configured && r2Info.presignedUrl) {
             // Direct PUT upload to Cloudflare R2
@@ -672,23 +686,23 @@ export const api = {
                 });
               } else {
                 // Fallback to server endpoint
-                this._uploadToServerFallback(file, onProgress, adminPin, resolve, reject);
+                this._uploadToServerFallback(file, onProgress, safePin, resolve, reject);
               }
             };
 
             xhr.onerror = () => {
               // Fallback to server endpoint
-              this._uploadToServerFallback(file, onProgress, adminPin, resolve, reject);
+              this._uploadToServerFallback(file, onProgress, safePin, resolve, reject);
             };
 
             xhr.send(file);
           } else {
             // R2 not configured in env, upload directly to server endpoint
-            this._uploadToServerFallback(file, onProgress, adminPin, resolve, reject);
+            this._uploadToServerFallback(file, onProgress, safePin, resolve, reject);
           }
         })
         .catch(() => {
-          this._uploadToServerFallback(file, onProgress, adminPin, resolve, reject);
+          this._uploadToServerFallback(file, onProgress, safePin, resolve, reject);
         });
     });
   },
@@ -699,8 +713,9 @@ export const api = {
     formData.append('video', file);
 
     xhr.open('POST', `${API_BASE}/admin/upload-video`, true);
-    if (adminPin) {
-      xhr.setRequestHeader('x-admin-pin', adminPin);
+    const safePin = getSavedAdminPin(adminPin);
+    if (safePin) {
+      xhr.setRequestHeader('x-admin-pin', safePin);
     }
 
     xhr.upload.onprogress = (evt) => {
