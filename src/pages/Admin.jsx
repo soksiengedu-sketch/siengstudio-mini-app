@@ -143,7 +143,7 @@ export default function Admin() {
     setBakongVerifyLoading(true);
     setBakongVerifyResult(null);
     try {
-      const res = await api.verifyBakongAccount(bakongConfig?.accountId || '855885688848@aclb');
+      const res = await api.verifyBakongAccount(bakongConfig?.accountId || '006963867@abaa');
       setBakongVerifyResult(res);
     } catch (e) {
       setBakongVerifyResult({ exists: false, message: e.message });
@@ -2130,7 +2130,7 @@ export default function Admin() {
               <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
                 <span className="text-[10px] text-gray-400 block">BAKONG_ACCOUNT_ID:</span>
                 <span className="font-mono font-bold text-amber-300 break-all">
-                  {bakongConfig?.accountId || '855885688848@aclb'}
+                  {bakongConfig?.accountId || '006963867@abaa'}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">

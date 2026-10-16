@@ -13,9 +13,9 @@ export const generatePaymentQR = async ({
   tier = 'monthly',
   amountKhr = 6000,
   amountUsd = 1.5,
-  currency = 'KHR'
+  currency = 'USD'
 }) => {
-  const accountId = (process.env.BAKONG_ACCOUNT_ID || '855885688848@aclb').trim();
+  const accountId = (process.env.BAKONG_ACCOUNT_ID || '006963867@abaa').trim();
   const merchantName = (process.env.MERCHANT_NAME || 'CHAN SOKSIENG').trim();
   const merchantCity = (process.env.MERCHANT_CITY || 'Phnom Penh').trim();
 

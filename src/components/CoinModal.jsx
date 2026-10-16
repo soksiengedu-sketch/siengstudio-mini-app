@@ -41,6 +41,7 @@ export default function CoinModal() {
   const [selectedPackage, setSelectedPackage] = useState(2);
   const [selectedVipTier, setSelectedVipTier] = useState('lite'); // 'lite', 'weekly', 'monthly'
   const [paymentMethod, setPaymentMethod] = useState('khqr'); // 'khqr' or 'stars'
+  const [qrCurrency, setQrCurrency] = useState('USD'); // Default to USD ($) for ABA USD account
 
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -55,6 +56,7 @@ export default function CoinModal() {
       setIsProcessing(false);
       setPaymentError(null);
       setGeneratedKhqr(null);
+      setQrCurrency('USD');
     } else {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
@@ -198,7 +200,7 @@ export default function CoinModal() {
       ? `${currentCoinPkg.name} (${currentCoinPkg.totalCoins} កាក់)`
       : `${currentVipPkg.name} (${currentVipPkg.period})`;
 
-  const handleProceedToPayment = async () => {
+  const handleProceedToPayment = async (overrideCurrency) => {
     haptic.medium();
 
     if (paymentMethod === 'stars') {
@@ -206,8 +208,12 @@ export default function CoinModal() {
       return;
     }
 
-    // ACLEDA Bakong Dynamic KHQR Flow
+    const targetCurrency = overrideCurrency || qrCurrency || 'USD';
+    setQrCurrency(targetCurrency);
+
+    // Dynamic KHQR Flow (Default USD for ABA 006 963 867)
     setIsGeneratingQr(true);
+    setPaymentError(null);
     setModalStep('pay');
 
     try {
@@ -221,15 +227,18 @@ export default function CoinModal() {
         tier: currentVipPkg.id,
         amountKhr,
         amountUsd,
-        currency: 'KHR'
+        currency: targetCurrency
       });
 
       if (res && res.success) {
         setGeneratedKhqr(res);
         startPollingPayment(res.md5);
+      } else {
+        setPaymentError(res?.message || 'Failed to generate KHQR');
       }
     } catch (err) {
       console.error('Failed to generate KHQR:', err);
+      setPaymentError(err?.message || 'Failed to generate KHQR');
     } finally {
       setIsGeneratingQr(false);
     }
@@ -382,6 +391,13 @@ export default function CoinModal() {
     setIsCoinModalOpen(false);
     setModalStep('select');
   };
+
+  const currentAccountId = (generatedKhqr?.accountId || '006963867@abaa').trim();
+  const isAbaBank = currentAccountId.toLowerCase().includes('aba');
+  const bankDisplayName = isAbaBank ? 'ABA Bank' : (currentAccountId.includes('aclb') ? 'ACLEDA Bank' : 'Bakong Bank');
+  const formattedAccountNumber = isAbaBank && currentAccountId.startsWith('006963867')
+    ? '006 963 867'
+    : currentAccountId;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -654,7 +670,9 @@ export default function CoinModal() {
                 <span className="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-black">
                   KHQR
                 </span>
-                <span className="text-xs font-bold text-gray-200">ACLEDA Bank</span>
+                <span className="text-xs font-bold text-gray-200">
+                  {bankDisplayName} ({(generatedKhqr?.currency || qrCurrency) === 'KHR' ? 'KHR ៛' : 'USD $'})
+                </span>
               </div>
 
               <button
@@ -693,20 +711,69 @@ export default function CoinModal() {
                 </button>
               </div>
             ) : (
-              /* ACLEDA Bank Bakong KHQR Screen */
+              /* Bank Bakong Dynamic KHQR Screen */
               <div className="w-full flex flex-col items-center">
                 {/* Account Summary Card */}
-                <div className="w-full py-2.5 px-3.5 bg-rose-950/40 border border-rose-500/30 rounded-2xl text-left flex justify-between items-center mb-3">
+                <div className="w-full py-2.5 px-3.5 bg-gradient-to-r from-rose-950/40 via-red-950/25 to-black border border-rose-500/30 rounded-2xl text-left flex justify-between items-center mb-2.5">
                   <div>
-                    <p className="text-[10px] text-rose-300 font-medium">គណនីទទួល (ACLEDA Bank):</p>
+                    <p className="text-[10px] text-rose-300 font-medium">គណនីទទួល ({bankDisplayName}):</p>
                     <p className="text-xs font-black text-white uppercase tracking-wider">
                       {generatedKhqr?.merchantName || 'CHAN SOKSIENG'}
                     </p>
-                    <p className="text-[10px] font-mono text-rose-200">088 568 8848</p>
+                    <p className="text-[11px] font-mono font-bold text-amber-300">{formattedAccountNumber}</p>
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] text-gray-400 block">{activeTitleDisplay}</span>
-                    <span className="text-sm font-black text-amber-400">{activePriceDisplay}</span>
+                    <span className="text-sm font-black text-amber-400">
+                      {(generatedKhqr?.currency || qrCurrency) === 'KHR'
+                        ? (activeSubTab === 'coins' ? currentCoinPkg.priceKhr : currentVipPkg.priceKhr)
+                        : (activeSubTab === 'coins' ? currentCoinPkg.price : currentVipPkg.price)}
+                    </span>
+                    <span className="text-[9px] block text-emerald-400 font-bold">
+                      {(generatedKhqr?.currency || qrCurrency) === 'USD' ? 'USD ($)' : 'KHR (៛)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Currency Switcher */}
+                <div className="w-full flex items-center justify-between gap-1.5 mb-2.5 bg-white/5 p-1 rounded-xl border border-white/10">
+                  <span className="text-[10px] font-semibold text-gray-400 pl-1.5">
+                    {lang === 'km' ? 'រូបិយប័ណ្ណ:' : 'Currency:'}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={isGeneratingQr}
+                      onClick={() => {
+                        if (qrCurrency !== 'USD') {
+                          handleProceedToPayment('USD');
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                        qrCurrency === 'USD'
+                          ? 'bg-emerald-500 text-black shadow'
+                          : 'text-gray-400 hover:text-white bg-transparent'
+                      }`}
+                    >
+                      <span>💵 USD ($)</span>
+                      <span className="text-[9px] opacity-80">(ABA)</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGeneratingQr}
+                      onClick={() => {
+                        if (qrCurrency !== 'KHR') {
+                          handleProceedToPayment('KHR');
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                        qrCurrency === 'KHR'
+                          ? 'bg-rose-500 text-white shadow'
+                          : 'text-gray-400 hover:text-white bg-transparent'
+                      }`}
+                    >
+                      ៛ KHR (រៀល)
+                    </button>
                   </div>
                 </div>
 
@@ -720,7 +787,7 @@ export default function CoinModal() {
                   ) : generatedKhqr?.qrImageData ? (
                     <img
                       src={generatedKhqr.qrImageData}
-                      alt="ACLEDA KHQR"
+                      alt="Bakong KHQR"
                       className="w-full h-full object-contain rounded-xl"
                     />
                   ) : (
@@ -738,8 +805,14 @@ export default function CoinModal() {
                 </div>
 
                 <p className="text-[11px] text-gray-400 mt-2 leading-relaxed max-w-xs">
-                  បើកកម្មវិធី <strong>ACLEDA Mobile</strong>, <strong>ABA</strong>, ឬធនាគារណាក៏បាន ដើម្បីស្កេនបង់ប្រាក់
+                  បើកកម្មវិធី <strong>ABA Mobile</strong>, <strong>ACLEDA</strong>, ឬធនាគារណាក៏បាន ដើម្បីស្កេនបង់ប្រាក់
                 </p>
+
+                {qrCurrency === 'USD' && isAbaBank && (
+                  <p className="text-[10px] text-emerald-400/90 mt-1 font-medium">
+                    ✓ គណនី ABA 006 963 867 ទទួលជាប្រាក់ដុល្លារ ($) ស្កេនបានភ្លាមៗ
+                  </p>
+                )}
 
                 {/* Error Banner if not detected on Bakong */}
                 {paymentError && (

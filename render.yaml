@@ -17,7 +17,7 @@ services:
       - key: ADMIN_PIN
         value: 88@48*
       - key: BAKONG_ACCOUNT_ID
-        value: 855885688848@aclb
+        value: 006963867@abaa
       - key: MERCHANT_NAME
         value: CHAN SOKSIENG
       - key: MERCHANT_CITY
