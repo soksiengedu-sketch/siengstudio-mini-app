@@ -24,9 +24,9 @@ export default function Library() {
   }, []);
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3">
+    <div className="min-h-screen pb-24 px-4 sm:px-6 pt-4 max-w-7xl mx-auto">
       {/* Subtab Toggle */}
-      <div className="grid grid-cols-2 gap-2 p-1 bg-white/5 rounded-2xl mb-4">
+      <div className="grid grid-cols-2 gap-2 p-1.5 bg-white/5 border border-white/5 rounded-2xl mb-6 max-w-md mx-auto">
         <button
           onClick={() => {
             haptic.select();
@@ -62,20 +62,20 @@ export default function Library() {
       {subTab === 'favorites' && (
         <div>
           {favorites.length === 0 ? (
-            <div className="text-center py-20 text-gray-500">
-              <Bookmark size={40} className="mx-auto mb-2 opacity-30" />
+            <div className="text-center py-24 text-gray-500">
+              <Bookmark size={44} className="mx-auto mb-2 opacity-30" />
               <p className="text-sm font-semibold">{t('noFavorites')}</p>
               <button
                 onClick={() => setActiveTab('home')}
-                className="mt-4 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold"
+                className="mt-4 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-extrabold shadow-lg"
               >
                 {t('home')}
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3.5 sm:gap-4 md:gap-5">
               {favorites.map((drama) => (
-                <DramaCard key={drama.id} drama={drama} size="small" />
+                <DramaCard key={drama.id} drama={drama} size="grid" />
               ))}
             </div>
           )}

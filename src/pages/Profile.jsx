@@ -58,7 +58,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3 space-y-4">
+    <div className="min-h-screen pb-24 px-4 pt-4 space-y-4 max-w-4xl mx-auto">
       {/* Profile Header Card */}
       <div className="relative overflow-hidden rounded-3xl bg-white/5 border border-white/5 p-5 flex items-center gap-4">
         <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-purple-900/40 border-2 border-purple-500/30 flex-shrink-0">
@@ -78,7 +78,7 @@ export default function Profile() {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <h2 className="text-base font-extrabold text-white truncate">
+            <h2 className="text-base sm:text-lg font-extrabold text-white truncate">
               {user?.first_name} {user?.last_name || ''}
             </h2>
             {isVip ? (
@@ -95,7 +95,7 @@ export default function Profile() {
             <p className="text-xs text-purple-400 font-medium">@{user.username}</p>
           )}
           <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-            Telegram ID: {user?.id}
+            {user?.username ? `Telegram ID: ${user?.id}` : `Member ID: #${user?.id || '887654321'}`}
           </p>
         </div>
       </div>

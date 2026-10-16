@@ -11,8 +11,9 @@ export default function DramaCard({ drama, rank = null, size = 'normal' }) {
     ? drama.episodes.length
     : (typeof drama.totalEpisodes === 'number' ? drama.totalEpisodes : (drama.episodes?.length || 0));
 
-  const widthClass = size === 'large' ? 'w-44' : size === 'small' ? 'w-28' : 'w-32';
-  const heightClass = size === 'large' ? 'h-64' : size === 'small' ? 'h-40' : 'h-48';
+  const isGrid = size === 'grid' || size === 'small';
+  const widthClass = isGrid ? 'w-full' : size === 'large' ? 'w-44 sm:w-48' : 'w-32 sm:w-36';
+  const heightClass = isGrid ? 'aspect-[3/4.2]' : size === 'large' ? 'h-64 sm:h-72' : 'h-48 sm:h-52';
 
   return (
     <div

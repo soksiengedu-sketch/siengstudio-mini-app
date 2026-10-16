@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import DramaDetail from './pages/DramaDetail';
@@ -82,7 +83,10 @@ function MainApp() {
           {activeTab === 'admin' && <Admin />}
         </main>
 
-        {/* Bottom Navigation */}
+        {/* Professional Website Footer */}
+        {activeTab !== 'watch' && activeTab !== 'admin' && <Footer />}
+
+        {/* Bottom Navigation (Mobile Only) */}
         <BottomNav />
       </div>
 

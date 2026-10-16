@@ -23,7 +23,7 @@ export default function HeroBanner({ featured = [] }) {
   const desc = lang === 'km' && item.descriptionKm ? item.descriptionKm : item.description;
 
   return (
-    <div className="relative w-full h-[360px] sm:h-[440px] md:h-[500px] overflow-hidden rounded-b-3xl sm:rounded-3xl shadow-2xl">
+    <div className="relative w-full h-[360px] sm:h-[440px] md:h-[520px] lg:h-[560px] overflow-hidden rounded-b-3xl sm:rounded-3xl shadow-2xl md:mt-4 border border-white/5">
       {/* Background Image with Gradient Overlay */}
       <img
         src={item.bannerUrl || item.posterUrl}

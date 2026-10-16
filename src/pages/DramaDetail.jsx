@@ -63,9 +63,9 @@ export default function DramaDetail({ dramaId, onBack }) {
   const episodes = drama.episodes || [];
 
   return (
-    <div className="min-h-screen bg-[#0b0c13] pb-24">
+    <div className="min-h-screen bg-[#0b0c13] pb-24 max-w-7xl mx-auto">
       {/* Backdrop Header */}
-      <div className="relative w-full h-72">
+      <div className="relative w-full h-72 sm:h-96 md:h-[440px] md:rounded-3xl overflow-hidden md:mt-3 shadow-2xl border border-white/5">
         <img
           src={drama.bannerUrl || drama.posterUrl}
           alt={title}
@@ -80,7 +80,7 @@ export default function DramaDetail({ dramaId, onBack }) {
               haptic.light();
               onBack();
             }}
-            className="p-2 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/10 active:scale-90"
+            className="p-2.5 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/10 active:scale-90 hover:bg-black/80 transition-all shadow-lg"
           >
             <ArrowLeft size={20} />
           </button>
@@ -92,41 +92,41 @@ export default function DramaDetail({ dramaId, onBack }) {
                 `https://t.me/SiengStudioBot?startapp=drama_${drama.id}`
               );
             }}
-            className="p-2 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/10 active:scale-90"
+            className="p-2.5 rounded-full bg-black/60 backdrop-blur-md text-white border border-white/10 active:scale-90 hover:bg-black/80 transition-all shadow-lg"
           >
             <Share2 size={18} />
           </button>
         </div>
 
         {/* Floating Poster & Info */}
-        <div className="absolute bottom-3 left-4 right-4 flex items-end gap-3.5">
-          <div className="w-24 h-36 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10 flex-shrink-0 bg-gray-900">
+        <div className="absolute bottom-4 left-4 right-4 sm:left-6 sm:right-6 flex items-end gap-4 sm:gap-6">
+          <div className="w-24 h-36 sm:w-32 sm:h-48 md:w-44 md:h-64 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/10 flex-shrink-0 bg-gray-900">
             <img src={drama.posterUrl} alt={title} className="w-full h-full object-cover" />
           </div>
 
           <div className="flex-1 min-w-0 pb-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               {drama.isVipOnly ? (
-                <span className="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[9px] font-black uppercase flex items-center gap-0.5">
-                  <Crown size={9} className="fill-black" /> VIP
+                <span className="px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-0.5 shadow">
+                  <Crown size={10} className="fill-black" /> VIP
                 </span>
               ) : (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[9px] font-bold">
+                <span className="px-2 py-0.5 rounded bg-emerald-500 text-white text-[10px] font-bold shadow">
                   {t('free')}
                 </span>
               )}
               {drama.rating && (
-                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white/10 text-amber-300 text-[10px] font-bold backdrop-blur-md">
-                  <Star size={10} className="fill-amber-400 text-amber-400" />
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-amber-300 text-[11px] font-bold backdrop-blur-md">
+                  <Star size={11} className="fill-amber-400 text-amber-400" />
                   {drama.rating}
                 </span>
               )}
-              <span className="text-[10px] text-gray-400">
+              <span className="text-xs text-gray-400">
                 {episodes.length} {t('ep')}
               </span>
             </div>
 
-            <h1 className="text-lg font-black text-white leading-tight line-clamp-2 mt-1.5 drop-shadow">
+            <h1 className="text-xl sm:text-2xl md:text-4xl font-black text-white leading-tight line-clamp-2 mt-2 drop-shadow-lg">
               {title}
             </h1>
 

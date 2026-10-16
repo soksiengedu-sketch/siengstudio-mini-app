@@ -213,6 +213,16 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
       } else if (e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault();
         togglePlay();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (videoRef.current) {
+          videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (videoRef.current) {
+          videoRef.current.currentTime = Math.min(duration || 9999, videoRef.current.currentTime + 5);
+        }
       } else if (e.key === 'm' || e.key === 'M') {
         toggleMute();
       } else if (e.key === 'f' || e.key === 'F') {
@@ -223,7 +233,7 @@ export default function ReelPlayer({ drama, initialEpId, onBack }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentEpIndex, isPlaying, isMuted, isCinema]);
+  }, [currentEpIndex, isPlaying, isMuted, isCinema, duration]);
 
   // Touch handlers for vertical reel swipe
   const handleTouchStart = (e) => {
