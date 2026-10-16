@@ -38,7 +38,8 @@ import {
   FileVideo,
   CheckCheck,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Save
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
@@ -70,6 +71,8 @@ export default function Admin() {
       }
     } catch (e) {}
   };
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const [message, setMessage] = useState(null);
   const [searchEp, setSearchEp] = useState('');
   const [editingEpisode, setEditingEpisode] = useState(null);
@@ -485,6 +488,27 @@ export default function Admin() {
     }
   };
 
+  // --- Master Save All Changes ---
+  const handleSaveAllChanges = async () => {
+    haptic.medium();
+    setIsSavingAll(true);
+    try {
+      const res = await api.saveDatabase(dramas, activePin);
+      if (res && res.success) {
+        haptic.success();
+        setHasUnsavedChanges(false);
+        showMsg('success', '✅ បានរក្សាទុក និងធ្វើសមកាលកម្មគ្រប់ទិន្នន័យទាំងអស់ (រឿង និងភាគ) ដោយជោគជ័យ! ទិន្នន័យត្រូវបានចងចាំជារៀងរហូត។');
+        await loadData();
+      } else {
+        showMsg('error', res?.message || 'Failed to save database');
+      }
+    } catch (err) {
+      showMsg('error', 'Error saving database: ' + err.message);
+    } finally {
+      setIsSavingAll(false);
+    }
+  };
+
   // --- Create Drama ---
   const handleCreateDrama = async (e) => {
     e.preventDefault();
@@ -497,35 +521,47 @@ export default function Admin() {
       autoBroadcast: autoBroadcastDrama
     };
     const res = await api.createDrama(dramaData, activePin);
-    if (res.success) {
+    if (res && res.success) {
       haptic.success();
       showMsg('success', 'បង្កើតរឿងភាគថ្មីបានជោគជ័យ! (Drama created successfully!)');
       if (res.drama?.id) {
         setSelectedDramaId(res.drama.id);
       }
+      setHasUnsavedChanges(true);
       await loadData();
       setActiveTabLocal('manage');
     } else {
-      showMsg('error', res.message || 'Failed to create drama');
+      showMsg('error', res?.message || 'Failed to create drama');
     }
   };
 
   // --- Delete Drama ---
   const handleDeleteDrama = async (dramaId, title) => {
-    if (!window.confirm(`តើអ្នកពិតជាចង់លុបរឿង "${title}" និងគ្រប់ភាគទាំងអស់មែនទេ? (Are you sure you want to delete this drama?)`)) {
+    if (!dramaId) return;
+    const dramaName = title || 'រឿងនេះ';
+    if (!window.confirm(`⚠️ តើអ្នកពិតជាចង់លុបរឿង "${dramaName}" និងគ្រប់ភាគទាំងអស់ចេញពីប្រព័ន្ធមែនទេ? (Are you sure you want to delete this drama?)`)) {
       return;
     }
     haptic.warning();
-    const res = await api.deleteDrama(dramaId, activePin);
-    if (res.success) {
-      haptic.success();
-      showMsg('success', 'បានលុបរឿងដោយជោគជ័យ! (Drama deleted successfully)');
-      if (selectedDramaIdRef.current === dramaId) {
-        setSelectedDramaId('');
+    try {
+      const res = await api.deleteDrama(dramaId, activePin);
+      if (res && res.success) {
+        haptic.success();
+        showMsg('success', `បានលុបរឿង "${dramaName}" ដោយជោគជ័យ!`);
+        const remaining = dramas.filter((d) => d.id !== dramaId);
+        setDramas(remaining);
+        if (selectedDramaIdRef.current === dramaId) {
+          setSelectedDramaId(remaining[0]?.id || '');
+        }
+        setHasUnsavedChanges(true);
+        await api.saveDatabase(remaining, activePin).catch(() => {});
+        await loadData();
+        setActiveTabLocal('manage');
+      } else {
+        showMsg('error', res?.message || 'Failed to delete drama');
       }
-      await loadData();
-    } else {
-      showMsg('error', res.message || 'Failed to delete drama');
+    } catch (err) {
+      showMsg('error', 'Failed to delete drama: ' + err.message);
     }
   };
 
@@ -565,14 +601,18 @@ export default function Admin() {
         : editingDrama.genres
     };
     const res = await api.updateDrama(editingDrama.id, dramaData, activePin);
-    if (res.success) {
+    if (res && res.success) {
       haptic.success();
       showMsg('success', `បានកែសម្រួលរឿង "${editingDrama.titleKm || editingDrama.title}" និងចងចាំចំនួនភាគ (${editingDrama.episodes?.length || 0} ភាគ) ដោយជោគជ័យ!`);
       setSelectedDramaId(editingDrama.id);
+      const updatedDramas = dramas.map((d) => (d.id === editingDrama.id ? { ...d, ...dramaData } : d));
+      setDramas(updatedDramas);
+      setHasUnsavedChanges(true);
+      await api.saveDatabase(updatedDramas, activePin).catch(() => {});
       await loadData();
       setActiveTabLocal('manage');
     } else {
-      showMsg('error', res.message || 'Failed to update drama');
+      showMsg('error', res?.message || 'Failed to update drama');
     }
   };
 
@@ -847,6 +887,21 @@ export default function Admin() {
           </h1>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Master Save & Cloud Sync Button */}
+          <button
+            onClick={handleSaveAllChanges}
+            disabled={isSavingAll}
+            className={`px-3 py-1.5 rounded-xl text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all ${
+              hasUnsavedChanges
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 ring-2 ring-emerald-400 shadow-emerald-900/50 animate-pulse'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:brightness-110'
+            }`}
+            title="រក្សាទុកទិន្នន័យ និង Sync ទៅ Cloudflare R2 (Save & Sync to Cloud)"
+          >
+            {isSavingAll ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+            <span>{isSavingAll ? 'កំពុង Save...' : hasUnsavedChanges ? '💾 Save ការផ្លាស់ប្តូរ' : '💾 Save ទៅ Cloud'}</span>
+          </button>
+
           <button
             onClick={() => setActiveTabLocal('addDrama')}
             className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-xs flex items-center gap-1 shadow-md shadow-purple-900/40 active:scale-95 transition-all"
@@ -894,6 +949,29 @@ export default function Admin() {
           </button>
         </div>
       </div>
+
+      {/* Unsaved Changes Live Alert Banner */}
+      {hasUnsavedChanges && (
+        <div className="mt-3 p-3 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-teal-950/70 to-emerald-950/90 border border-emerald-500/40 flex items-center justify-between gap-2 shadow-xl animate-fade-in">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-2.5 w-2.5 relative shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <p className="text-xs font-bold text-emerald-200 truncate">
+              ⚠️ អ្នកមានការផ្លាស់ប្តូរ (កែសម្រួល, បន្ថែម, ឬលុប) មិនទាន់ Save!
+            </p>
+          </div>
+          <button
+            onClick={handleSaveAllChanges}
+            disabled={isSavingAll}
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-xs font-black shadow-md flex items-center gap-1.5 shrink-0 active:scale-95 transition-all"
+          >
+            <Save size={13} />
+            <span>{isSavingAll ? 'កំពុង Save...' : 'ចុច Save ឥឡូវនេះ'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Overview Stats */}
       <div className="grid grid-cols-3 gap-2 mt-3">
@@ -1150,6 +1228,14 @@ export default function Admin() {
                   className="px-2.5 py-1.5 rounded-lg bg-rose-600/30 text-rose-300 hover:bg-rose-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95"
                 >
                   <Sparkles size={13} /> Batch Generator
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteDrama(selectedDrama.id, selectedDrama.titleKm || selectedDrama.title)}
+                  className="px-2.5 py-1.5 rounded-lg bg-red-600/30 text-red-200 hover:bg-red-600/50 text-[11px] font-bold flex items-center gap-1 active:scale-95 border border-red-500/40"
+                  title="លុបរឿងនេះចោលទាំងស្រុង"
+                >
+                  <Trash2 size={13} /> 🗑️ លុបរឿងនេះចោល
                 </button>
                 <button
                   onClick={() => handleDeleteAllEpisodes(selectedDrama.id, selectedDrama.title)}
@@ -3240,6 +3326,14 @@ export default function Admin() {
               className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-xs shadow-lg active:scale-95 transition-transform"
             >
               💾 រក្សាទុក និងចងចាំការកែសម្រួល (Save Changes)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteDrama(editingDrama.id, editingDrama.titleKm || editingDrama.title)}
+              className="py-3 px-4 rounded-xl bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-500/40 font-bold text-xs active:scale-95 flex items-center gap-1.5"
+              title="លុបរឿងនេះចោលទាំងស្រុង"
+            >
+              <Trash2 size={14} /> 🗑️ លុបរឿងនេះចោល
             </button>
             <button
               type="button"

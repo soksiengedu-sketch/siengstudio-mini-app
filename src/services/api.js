@@ -585,6 +585,28 @@ export const api = {
     }
   },
 
+  async saveDatabase(dramas, adminPin) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/save-database`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
+        body: JSON.stringify({ dramas })
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(dramas)) {
+        setLocalCachedDramas(dramas);
+      }
+      return data;
+    } catch (err) {
+      console.warn('Save database error:', err);
+      if (Array.isArray(dramas)) {
+        setLocalCachedDramas(dramas);
+        return { success: true, message: 'ទិន្នន័យត្រូវបានរក្សាទុកក្នុង Local Storage ដោយជោគជ័យ', cachedOnly: true };
+      }
+      return { success: false, message: err.message };
+    }
+  },
+
   async broadcastTelegram(broadcastData, adminPin) {
     try {
       const res = await fetch(`${API_BASE}/admin/broadcast`, {

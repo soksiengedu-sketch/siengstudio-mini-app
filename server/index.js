@@ -21,7 +21,7 @@ import {
   verifyBakongAccount,
   decodeKhqrPayload
 } from './services/bakong.js';
-import { isR2Configured, generatePresignedUploadUrl, uploadBufferToR2 } from './services/r2.js';
+import { isR2Configured, generatePresignedUploadUrl, uploadBufferToR2, saveDatabaseToR2, loadDatabaseFromR2 } from './services/r2.js';
 
 dotenv.config();
 
@@ -41,6 +41,18 @@ app.use(express.urlencoded({ extended: true }));
 const videosUploadDir = path.join(__dirname, '../public/videos');
 if (!fs.existsSync(videosUploadDir)) {
   fs.mkdirSync(videosUploadDir, { recursive: true });
+}
+
+// Seamless Cloudflare R2 Database Sync on Startup
+if (isR2Configured()) {
+  loadDatabaseFromR2()
+    .then((r2Data) => {
+      if (r2Data && Array.isArray(r2Data.dramas) && r2Data.dramas.length > 0) {
+        db.importDatabase(r2Data);
+        console.log(`[R2] ✅ Restored and synced ${r2Data.dramas.length} dramas from Cloudflare R2 into database!`);
+      }
+    })
+    .catch((err) => console.warn('[R2] Startup sync notice:', err.message));
 }
 
 const upload = multer({
@@ -527,7 +539,45 @@ app.get('/api/admin/backup', checkAdminPin, (req, res) => {
 app.post('/api/admin/import', checkAdminPin, (req, res) => {
   const success = db.importDatabase(req.body);
   if (!success) return res.status(400).json({ success: false, message: 'Invalid database payload' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, message: 'Database imported successfully', totalDramas: db.data.dramas.length });
+});
+
+// Admin: Save & Sync Database (Cloud & Disk)
+app.post('/api/admin/save-database', checkAdminPin, async (req, res) => {
+  try {
+    const { dramas, dbJson } = req.body;
+    if (dbJson) {
+      db.importDatabase(dbJson);
+    } else if (Array.isArray(dramas)) {
+      db.data.dramas = dramas;
+      for (const d of db.data.dramas) {
+        d.episodes = d.episodes || [];
+        d.totalEpisodes = d.episodes.length;
+      }
+      db.save();
+    } else {
+      db.save();
+    }
+
+    let r2Synced = false;
+    if (isR2Configured()) {
+      const r2Res = await saveDatabaseToR2(db.data);
+      r2Synced = r2Res?.success || false;
+    }
+
+    res.json({
+      success: true,
+      message: 'បានរក្សាទុក និងធ្វើសមកាលកម្មទិន្នន័យទាំងអស់ដោយជោគជ័យ!',
+      totalDramas: db.data.dramas.length,
+      r2Synced
+    });
+  } catch (err) {
+    console.error('Save database error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 // Admin: Stats

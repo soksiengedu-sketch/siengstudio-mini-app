@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initialDramas } from './seedData.js';
+import { isR2Configured, saveDatabaseToR2 } from './services/r2.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +67,11 @@ class Database {
     } catch (err) {
       console.error('Error saving db.json:', err);
     }
+    try {
+      if (isR2Configured()) {
+        saveDatabaseToR2(this.data).catch(() => {});
+      }
+    } catch (e) {}
   }
 
   // --- Dramas ---

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -94,3 +94,56 @@ export async function uploadBufferToR2(buffer, fileName, contentType = 'video/mp
     bucket: R2_BUCKET_NAME
   };
 }
+
+/**
+ * Persist the entire db.json to Cloudflare R2
+ */
+export async function saveDatabaseToR2(dbData) {
+  if (!isR2Configured()) {
+    return { success: false, message: 'Cloudflare R2 is not configured' };
+  }
+  try {
+    const client = getS3Client();
+    const jsonStr = typeof dbData === 'string' ? dbData : JSON.stringify(dbData, null, 2);
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: 'database/db.json',
+      Body: jsonStr,
+      ContentType: 'application/json',
+    });
+    await client.send(command);
+    console.log('[R2] Database snapshot backed up to Cloudflare R2 (database/db.json)');
+    return { success: true };
+  } catch (err) {
+    console.warn('[R2] Failed to save database to R2:', err.message);
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * Load db.json snapshot from Cloudflare R2 if available
+ */
+export async function loadDatabaseFromR2() {
+  if (!isR2Configured()) return null;
+  try {
+    const client = getS3Client();
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: 'database/db.json',
+    });
+    const response = await client.send(command);
+    const bodyString = await response.Body.transformToString();
+    const data = JSON.parse(bodyString);
+    if (data && Array.isArray(data.dramas)) {
+      console.log(`[R2] Restored database from Cloudflare R2 with ${data.dramas.length} dramas.`);
+      return data;
+    }
+  } catch (err) {
+    // If not found yet (NoSuchKey), it's completely normal on first run
+    if (err.name !== 'NoSuchKey') {
+      console.warn('[R2] Note loading database from R2:', err.message);
+    }
+  }
+  return null;
+}
+
