@@ -15,9 +15,9 @@ export const generatePaymentQR = async ({
   amountUsd = 1.5,
   currency = 'KHR'
 }) => {
-  const accountId = process.env.BAKONG_ACCOUNT_ID || '855885688848@aclb';
-  const merchantName = process.env.MERCHANT_NAME || 'CHAN SOKSIENG';
-  const merchantCity = process.env.MERCHANT_CITY || 'Phnom Penh';
+  const accountId = (process.env.BAKONG_ACCOUNT_ID || '855885688848@aclb').trim();
+  const merchantName = (process.env.MERCHANT_NAME || 'CHAN SOKSIENG').trim();
+  const merchantCity = (process.env.MERCHANT_CITY || 'Phnom Penh').trim();
 
   const isKhr = currency === 'KHR';
   const amountToCharge = isKhr ? Number(amountKhr) : Number(amountUsd);
@@ -26,11 +26,13 @@ export const generatePaymentQR = async ({
   const billNumber = `SS${Date.now().toString().slice(-6)}`;
   const expirationTimestamp = Date.now() + 15 * 60 * 1000; // 15 mins expiry
 
+  const cleanMobile = accountId.includes('@') ? accountId.split('@')[0].trim() : accountId;
+
   const optionalData = {
     currency: selectedCurrency,
     amount: amountToCharge,
     billNumber,
-    mobileNumber: accountId.replace('@aclb', ''),
+    mobileNumber: cleanMobile,
     storeLabel: 'SiengStudio',
     terminalLabel: 'AppPay',
     expirationTimestamp
@@ -110,22 +112,23 @@ export const checkPaymentStatus = async (md5) => {
     return { success: true, paid: true, payment };
   }
 
-  const token = process.env.BAKONG_API_TOKEN;
+  const rawToken = process.env.BAKONG_API_TOKEN ? process.env.BAKONG_API_TOKEN.trim() : null;
 
   // If developer token is configured, call official Bakong Open API
-  if (token) {
+  if (rawToken) {
     try {
+      const authHeader = rawToken.startsWith('Bearer ') ? rawToken : `Bearer ${rawToken}`;
       const response = await fetch('https://api-bakong.nbc.gov.kh/v1/check_transaction_by_md5', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: authHeader
         },
         body: JSON.stringify({ md5 })
       });
 
       const data = await response.json();
-      if (data && (data.responseCode === 0 || data.data?.status === 'SUCCESS')) {
+      if (data && (data.responseCode === 0 || data.data?.status === 'SUCCESS' || data.status === 0 || data.data?.hash === md5)) {
         payment.isPaid = true;
         return { success: true, paid: true, payment, data };
       }
