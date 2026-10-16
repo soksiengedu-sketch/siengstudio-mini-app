@@ -36,7 +36,9 @@ import {
   Zap,
   Share2,
   FileVideo,
-  CheckCheck
+  CheckCheck,
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
