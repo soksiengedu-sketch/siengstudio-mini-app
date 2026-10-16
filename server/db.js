@@ -46,6 +46,10 @@ class Database {
       this.data.payments = {};
     }
 
+    if (Array.isArray(this.data.adminTelegramIds)) {
+      this.data.adminTelegramIds = this.data.adminTelegramIds.filter((id) => String(id) !== '8175240868');
+    }
+
     // Always ensure every drama has updated totalEpisodes matching episodes.length
     if (Array.isArray(this.data.dramas)) {
       for (const d of this.data.dramas) {

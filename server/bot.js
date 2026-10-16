@@ -157,6 +157,34 @@ export function setupTelegramBot(token, webAppUrl) {
     }
   });
 
+  // Command: /removeadmin - Remove admin privilege
+  bot.command('removeadmin', async (ctx) => {
+    try {
+      const parts = (ctx.match || '').trim().split(/\s+/);
+      const pin = parts[0];
+      const targetId = parts[1] || String(ctx.from.id);
+      const correctPin = (process.env.ADMIN_PIN || '88@48*').trim();
+
+      if (pin === correctPin) {
+        db.data.adminTelegramIds = (db.data.adminTelegramIds || []).filter(
+          (id) => String(id) !== String(targetId)
+        );
+        db.save();
+        await ctx.reply(
+          `✅ <b>បានដកសិទ្ធិ Admin សម្រាប់ ID: <code>${targetId}</code> រួចរាល់ហើយ!</b>`,
+          { parse_mode: 'HTML' }
+        );
+      } else {
+        await ctx.reply(
+          `🔒 <b>របៀបដក Admin:</b>\n<code>/removeadmin 88@48* &lt;ID&gt;</code>`,
+          { parse_mode: 'HTML' }
+        );
+      }
+    } catch (err) {
+      console.error('Error handling /removeadmin command:', err);
+    }
+  });
+
   // Callback query: 1-Tap Approve Payment
   bot.callbackQuery(/^approve_pay:(.+)$/, async (ctx) => {
     try {
@@ -527,12 +555,13 @@ export async function broadcastMessage({
  * Get all authorized admin Telegram Chat IDs
  */
 export function getAdminChatIds() {
-  const envAdmins = (process.env.ADMIN_TELEGRAM_ID || '8175240868')
+  const envAdmins = (process.env.ADMIN_TELEGRAM_ID || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const dbAdmins = db.data.adminTelegramIds || [];
-  return Array.from(new Set([...envAdmins, ...dbAdmins]));
+  const dbAdmins = (db.data.adminTelegramIds || []).map((s) => String(s).trim());
+  return Array.from(new Set([...envAdmins, ...dbAdmins]))
+    .filter((id) => id && id !== '8175240868');
 }
 
 /**
