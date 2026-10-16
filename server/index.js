@@ -7,7 +7,13 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { db } from './db.js';
 import { setupTelegramBot, createStarsInvoice, broadcastMessage } from './bot.js';
-import { generatePaymentQR, checkPaymentStatus, markPaymentCompleted } from './services/bakong.js';
+import {
+  generatePaymentQR,
+  checkPaymentStatus,
+  markPaymentCompleted,
+  verifyBakongAccount,
+  decodeKhqrPayload
+} from './services/bakong.js';
 import { isR2Configured, generatePresignedUploadUrl, uploadBufferToR2 } from './services/r2.js';
 
 dotenv.config();
@@ -279,6 +285,40 @@ app.post('/api/admin/payment/approve', checkAdminPin, (req, res) => {
       }
     }
     res.json({ success: true, paid: true, message: 'Payment already approved' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 4. Get Current Bakong Configuration
+app.get('/api/bakong/config', (req, res) => {
+  res.json({
+    success: true,
+    accountId: (process.env.BAKONG_ACCOUNT_ID || '855885688848@aclb').trim(),
+    merchantName: (process.env.MERCHANT_NAME || 'CHAN SOKSIENG').trim(),
+    merchantCity: (process.env.MERCHANT_CITY || 'Phnom Penh').trim(),
+    hasApiToken: Boolean(process.env.BAKONG_API_TOKEN)
+  });
+});
+
+// 5. Verify Bakong Account Live with NBC Bakong API
+app.post('/api/bakong/verify-account', async (req, res) => {
+  try {
+    const { accountId } = req.body;
+    const target = accountId || process.env.BAKONG_ACCOUNT_ID || '855885688848@aclb';
+    const result = await verifyBakongAccount(target);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 6. Decode Any KHQR Payload
+app.post('/api/bakong/decode-qr', (req, res) => {
+  try {
+    const { qr } = req.body;
+    const result = decodeKhqrPayload(qr);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
