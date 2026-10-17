@@ -524,7 +524,10 @@ app.put('/api/admin/dramas/:id/episodes', checkAdminPin, (req, res) => {
 app.delete('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req, res) => {
   const { dramaId, episodeId } = req.params;
   const result = db.deleteEpisode(dramaId, episodeId);
-  if (!result) return res.status(404).json({ error: 'Drama not found' });
+  if (!result) return res.status(404).json({ success: false, error: 'Drama not found' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, remainingCount: result.length, episodes: result });
 });
 
@@ -532,7 +535,10 @@ app.delete('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req
 app.delete('/api/admin/dramas/:dramaId/episodes', checkAdminPin, (req, res) => {
   const { dramaId } = req.params;
   const result = db.deleteAllEpisodes(dramaId);
-  if (result === null) return res.status(404).json({ error: 'Drama not found' });
+  if (result === null) return res.status(404).json({ success: false, error: 'Drama not found' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, message: 'All episodes deleted successfully', count: 0 });
 });
 
@@ -540,14 +546,20 @@ app.delete('/api/admin/dramas/:dramaId/episodes', checkAdminPin, (req, res) => {
 app.put('/api/admin/dramas/:dramaId/episodes/:episodeId', checkAdminPin, (req, res) => {
   const { dramaId, episodeId } = req.params;
   const updated = db.updateEpisode(dramaId, episodeId, req.body);
-  if (!updated) return res.status(404).json({ error: 'Episode or Drama not found' });
+  if (!updated) return res.status(404).json({ success: false, error: 'Episode or Drama not found' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, episode: updated });
 });
 
 // Admin: Update Drama Details
 app.put('/api/admin/dramas/:id', checkAdminPin, (req, res) => {
   const updated = db.updateDrama(req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: 'Drama not found' });
+  if (!updated) return res.status(404).json({ success: false, error: 'Drama not found' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, drama: updated });
 });
 
@@ -555,7 +567,10 @@ app.put('/api/admin/dramas/:id', checkAdminPin, (req, res) => {
 app.delete('/api/admin/dramas/:dramaId', checkAdminPin, (req, res) => {
   const { dramaId } = req.params;
   const deleted = db.deleteDrama(dramaId);
-  if (!deleted) return res.status(404).json({ error: 'Drama not found' });
+  if (!deleted) return res.status(404).json({ success: false, error: 'Drama not found' });
+  if (isR2Configured()) {
+    saveDatabaseToR2(db.data).catch(() => {});
+  }
   res.json({ success: true, message: 'Drama deleted' });
 });
 

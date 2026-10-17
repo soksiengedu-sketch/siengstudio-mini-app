@@ -418,7 +418,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes/${episodeId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
+        headers: getAdminHeaders(adminPin)
       });
       const data = await res.json();
       if (data.success && data.episodes) {
@@ -427,15 +427,30 @@ export const api = {
           episodes: data.episodes,
           totalEpisodes: data.episodes.length
         }));
+      } else {
+        // Fallback filter local cache if episodes not returned
+        const targetStr = String(episodeId).trim();
+        const targetNum = Number(episodeId);
+        updateLocalDrama(dramaId, (prev) => {
+          const filtered = (prev.episodes || []).filter((e) => {
+            const matchId = String(e.id).trim() === targetStr || (!isNaN(targetNum) && Number(e.id) === targetNum);
+            const matchEp = String(e.episodeNumber).trim() === targetStr || (!isNaN(targetNum) && Number(e.episodeNumber) === targetNum);
+            return !matchId && !matchEp;
+          });
+          return { ...prev, episodes: filtered, totalEpisodes: filtered.length };
+        });
       }
       return data;
     } catch (err) {
       console.warn('Admin delete episode error:', err);
+      const targetStr = String(episodeId).trim();
+      const targetNum = Number(episodeId);
       updateLocalDrama(dramaId, (prev) => {
-        const targetId = Number(episodeId);
-        const filtered = (prev.episodes || []).filter(
-          (e) => e.id !== targetId && e.episodeNumber !== targetId
-        );
+        const filtered = (prev.episodes || []).filter((e) => {
+          const matchId = String(e.id).trim() === targetStr || (!isNaN(targetNum) && Number(e.id) === targetNum);
+          const matchEp = String(e.episodeNumber).trim() === targetStr || (!isNaN(targetNum) && Number(e.episodeNumber) === targetNum);
+          return !matchId && !matchEp;
+        });
         return { ...prev, episodes: filtered, totalEpisodes: filtered.length };
       });
       return { success: true, cachedOnly: true };
@@ -446,7 +461,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}/episodes`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
+        headers: getAdminHeaders(adminPin)
       });
       const data = await res.json();
       if (data.success) {
@@ -531,18 +546,20 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/dramas/${dramaId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
+        headers: getAdminHeaders(adminPin)
       });
       const data = await res.json();
       if (data.success) {
+        const targetStr = String(dramaId).trim();
         const cached = getLocalCachedDramas() || [];
-        setLocalCachedDramas(cached.filter((d) => d.id !== dramaId));
+        setLocalCachedDramas(cached.filter((d) => String(d.id).trim() !== targetStr));
       }
       return data;
     } catch (err) {
       console.warn('Admin delete drama error:', err);
+      const targetStr = String(dramaId).trim();
       const cached = getLocalCachedDramas() || [];
-      setLocalCachedDramas(cached.filter((d) => d.id !== dramaId));
+      setLocalCachedDramas(cached.filter((d) => String(d.id).trim() !== targetStr));
       return { success: true, message: 'Drama deleted locally' };
     }
   },
@@ -603,7 +620,7 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE}/admin/save-database`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-pin': getSavedAdminPin(adminPin) },
+        headers: getAdminHeaders(adminPin),
         body: JSON.stringify({ dramas })
       });
       const data = await res.json();

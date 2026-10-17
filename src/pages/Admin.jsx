@@ -80,6 +80,17 @@ export default function Admin() {
   const [videoPreviewUrl, setVideoPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
 
+  // In-App Delete Confirmation Modal State (Reliable across Telegram WebApp & Browsers)
+  const [deleteDialog, setDeleteDialog] = useState({
+    isOpen: false,
+    type: null, // 'drama' | 'episode' | 'allEpisodes'
+    dramaId: null,
+    episodeId: null,
+    title: '',
+    epNumber: null,
+    isProcessing: false
+  });
+
   // Form states
   const [newDrama, setNewDrama] = useState({
     title: '',
@@ -535,33 +546,129 @@ export default function Admin() {
     }
   };
 
-  // --- Delete Drama ---
-  const handleDeleteDrama = async (dramaId, title) => {
-    if (!dramaId) return;
-    const dramaName = title || 'រឿងនេះ';
-    if (!window.confirm(`⚠️ តើអ្នកពិតជាចង់លុបរឿង "${dramaName}" និងគ្រប់ភាគទាំងអស់ចេញពីប្រព័ន្ធមែនទេ? (Are you sure you want to delete this drama?)`)) {
-      return;
-    }
+  // --- Delete In-App Prompts (Reliable on Telegram WebApp & Web) ---
+  const promptDeleteDrama = (dramaId, title) => {
     haptic.warning();
+    const targetId = dramaId || selectedDramaId || selectedDrama?.id;
+    const dramaObj = dramas.find((d) => String(d.id).trim() === String(targetId).trim()) || selectedDrama;
+    const dramaName = title || dramaObj?.titleKm || dramaObj?.title || 'រឿងនេះ';
+    setDeleteDialog({
+      isOpen: true,
+      type: 'drama',
+      dramaId: targetId,
+      episodeId: null,
+      title: dramaName,
+      epNumber: null,
+      isProcessing: false
+    });
+  };
+
+  const handleDeleteDrama = (dramaId, title) => {
+    promptDeleteDrama(dramaId, title);
+  };
+
+  const promptDeleteEpisode = (dramaId, episodeId, epNumber) => {
+    haptic.warning();
+    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+    setDeleteDialog({
+      isOpen: true,
+      type: 'episode',
+      dramaId: targetDramaId,
+      episodeId,
+      title: '',
+      epNumber,
+      isProcessing: false
+    });
+  };
+
+  const handleDeleteEpisode = (dramaId, episodeId, epNumber) => {
+    promptDeleteEpisode(dramaId, episodeId, epNumber);
+  };
+
+  const promptDeleteAllEpisodes = (dramaId, dramaTitle) => {
+    haptic.warning();
+    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+    const dramaObj = dramas.find((d) => String(d.id).trim() === String(targetDramaId).trim()) || selectedDrama;
+    const dramaName = dramaTitle || dramaObj?.titleKm || dramaObj?.title || 'រឿងនេះ';
+    setDeleteDialog({
+      isOpen: true,
+      type: 'allEpisodes',
+      dramaId: targetDramaId,
+      episodeId: null,
+      title: dramaName,
+      epNumber: null,
+      isProcessing: false
+    });
+  };
+
+  const handleDeleteAllEpisodes = (dramaId, dramaTitle) => {
+    promptDeleteAllEpisodes(dramaId, dramaTitle);
+  };
+
+  // --- Core Delete Execution ---
+  const executeDeleteAction = async () => {
+    const { type, dramaId, episodeId, title, epNumber } = deleteDialog;
+    setDeleteDialog((prev) => ({ ...prev, isProcessing: true }));
+
     try {
-      const res = await api.deleteDrama(dramaId, activePin);
-      if (res && res.success) {
-        haptic.success();
-        showMsg('success', `បានលុបរឿង "${dramaName}" ដោយជោគជ័យ!`);
-        const remaining = dramas.filter((d) => d.id !== dramaId);
-        setDramas(remaining);
-        if (selectedDramaIdRef.current === dramaId) {
-          setSelectedDramaId(remaining[0]?.id || '');
+      if (type === 'drama') {
+        const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+        const res = await api.deleteDrama(targetDramaId, activePin);
+        if (res && (res.success || res.message)) {
+          haptic.success();
+          showMsg('success', `បានលុបរឿង "${title}" ដោយជោគជ័យ!`);
+          const targetStr = String(targetDramaId).trim();
+          const remaining = dramas.filter((d) => String(d.id).trim() !== targetStr);
+          setDramas(remaining);
+          const nextSelected = remaining[0]?.id || '';
+          setSelectedDramaId(nextSelected);
+          selectedDramaIdRef.current = nextSelected;
+          setHasUnsavedChanges(true);
+          await api.saveDatabase(remaining, activePin).catch(() => {});
+          await loadData();
+          setActiveTabLocal('manage');
+        } else {
+          showMsg('error', res?.message || 'Failed to delete drama');
         }
-        setHasUnsavedChanges(true);
-        await api.saveDatabase(remaining, activePin).catch(() => {});
-        await loadData();
-        setActiveTabLocal('manage');
-      } else {
-        showMsg('error', res?.message || 'Failed to delete drama');
+      } else if (type === 'episode') {
+        const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+        const res = await api.deleteEpisode(targetDramaId, episodeId, activePin);
+        if (res && (res.success || res.episodes || res.cachedOnly)) {
+          haptic.success();
+          showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
+          setSelectedDramaId(targetDramaId);
+          selectedDramaIdRef.current = targetDramaId;
+          setHasUnsavedChanges(true);
+          await loadData();
+        } else {
+          showMsg('error', res?.message || 'Failed to delete episode');
+        }
+      } else if (type === 'allEpisodes') {
+        const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
+        const res = await api.deleteAllEpisodes(targetDramaId, activePin);
+        if (res && res.success) {
+          haptic.success();
+          showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង "${title}" រួចរាល់!`);
+          setSelectedDramaId(targetDramaId);
+          selectedDramaIdRef.current = targetDramaId;
+          setHasUnsavedChanges(true);
+          await loadData();
+        } else {
+          showMsg('error', res?.message || 'Failed to delete all episodes');
+        }
       }
     } catch (err) {
-      showMsg('error', 'Failed to delete drama: ' + err.message);
+      showMsg('error', 'Error deleting: ' + err.message);
+    } finally {
+      setDeleteDialog({
+        isOpen: false,
+        type: null,
+        dramaId: null,
+        episodeId: null,
+        title: '',
+        epNumber: null,
+        isProcessing: false
+      });
     }
   };
 
@@ -784,53 +891,6 @@ export default function Admin() {
       setActiveTabLocal('manage');
     } else {
       showMsg('error', res.message || 'Failed to import episodes');
-    }
-  };
-
-  // --- Delete Particular Episode ---
-  const handleDeleteEpisode = async (dramaId, episodeId, epNumber) => {
-    if (!window.confirm(`តើអ្នកពិតជាចង់លុប ភាគ ${epNumber} នេះមែនទេ? (Delete Episode ${epNumber}?)`)) {
-      return;
-    }
-    haptic.warning();
-    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
-    const res = await api.deleteEpisode(targetDramaId, episodeId, activePin);
-    if (res.success) {
-      haptic.success();
-      showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
-      setSelectedDramaId(targetDramaId);
-      await loadData();
-    } else {
-      showMsg('error', res.message || 'Failed to delete episode');
-    }
-  };
-
-  // --- Delete ALL Episodes ---
-  const handleDeleteAllEpisodes = async (dramaId, dramaTitle) => {
-    let confirmed = false;
-    try {
-      const confirmation = window.prompt(
-        `⚠️ ប្រយ័ត្ន! តើអ្នកចង់លុបគ្រប់ភាគទាំងអស់នៃរឿង "${dramaTitle}" មែនទេ?\nវាយពាក្យ DELETE ដើម្បីបញ្ជាក់៖`
-      );
-      if (confirmation === 'DELETE') confirmed = true;
-    } catch (e) {}
-
-    if (!confirmed) {
-      if (!window.confirm(`⚠️ តើអ្នកពិតជាចង់លុបគ្រប់ភាគទាំងអស់នៃរឿង "${dramaTitle}" មែនទេ? (Confirm delete all episodes)`)) {
-        return;
-      }
-    }
-
-    haptic.warning();
-    const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
-    const res = await api.deleteAllEpisodes(targetDramaId, activePin);
-    if (res.success) {
-      haptic.success();
-      showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង ${dramaTitle} រួចរាល់!`);
-      setSelectedDramaId(targetDramaId);
-      await loadData();
-    } else {
-      showMsg('error', res.message || 'Failed to delete all episodes');
     }
   };
 
@@ -3382,6 +3442,77 @@ export default function Admin() {
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: IN-APP DELETE CONFIRMATION ================= */}
+      {deleteDialog.isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-sm bg-[#151624] border border-red-500/40 rounded-3xl p-5 shadow-2xl flex flex-col items-center text-center relative">
+            <button
+              type="button"
+              disabled={deleteDialog.isProcessing}
+              onClick={() => setDeleteDialog({ isOpen: false, type: null, dramaId: null, episodeId: null, title: '', epNumber: null, isProcessing: false })}
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-white/5 text-gray-400 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+
+            <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mb-3 border border-red-500/30 shadow-lg shadow-red-950/50">
+              <Trash2 size={26} />
+            </div>
+
+            <h3 className="text-base font-black text-white">
+              {deleteDialog.type === 'drama'
+                ? 'បញ្ជាក់ការលុបរឿងនេះចោល'
+                : deleteDialog.type === 'episode'
+                ? `បញ្ជាក់ការលុបភាគ ${deleteDialog.epNumber}`
+                : 'បញ្ជាក់ការលុបគ្រប់ភាគទាំងអស់'}
+            </h3>
+
+            <div className="text-xs text-gray-300 mt-2 leading-relaxed px-2">
+              {deleteDialog.type === 'drama' && (
+                <p>
+                  តើអ្នកពិតជាចង់លុបរឿង <strong className="text-white">"{deleteDialog.title}"</strong> និងគ្រប់ភាគទាំងអស់ចេញពីប្រព័ន្ធមែនទេ? <br />
+                  <span className="text-[11px] text-rose-400 font-semibold">⚠️ សកម្មភាពនេះមិនអាចត្រឡប់ក្រោយវិញបានឡើយ។</span>
+                </p>
+              )}
+              {deleteDialog.type === 'episode' && (
+                <p>
+                  តើអ្នកពិតជាចង់លុប <strong className="text-white">ភាគទី {deleteDialog.epNumber}</strong> នេះចេញពីរឿងមែនទេ?
+                </p>
+              )}
+              {deleteDialog.type === 'allEpisodes' && (
+                <p>
+                  តើអ្នកពិតជាចង់លុប <strong className="text-white">គ្រប់ភាគទាំងអស់</strong> នៃរឿង <strong className="text-white">"{deleteDialog.title}"</strong> មែនទេ?
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2.5 w-full mt-5">
+              <button
+                type="button"
+                disabled={deleteDialog.isProcessing}
+                onClick={() => setDeleteDialog({ isOpen: false, type: null, dramaId: null, episodeId: null, title: '', epNumber: null, isProcessing: false })}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white text-xs font-bold active:scale-95 transition-all"
+              >
+                បោះបង់ (Cancel)
+              </button>
+              <button
+                type="button"
+                disabled={deleteDialog.isProcessing}
+                onClick={executeDeleteAction}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-600 text-white text-xs font-black shadow-lg shadow-red-900/50 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                {deleteDialog.isProcessing ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                <span>{deleteDialog.isProcessing ? 'កំពុងលុប...' : 'លុបចោលភ្លាម'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -86,12 +86,14 @@ class Database {
   }
 
   getDramaById(id) {
-    const drama = this.data.dramas.find((d) => d.id === id);
+    if (!id) return null;
+    const targetStr = String(id).trim();
+    const drama = this.data.dramas.find((d) => String(d.id).trim() === targetStr);
     if (drama) {
       drama.episodes = drama.episodes || [];
       drama.totalEpisodes = drama.episodes.length;
     }
-    return drama;
+    return drama || null;
   }
 
   createDrama(drama) {
@@ -172,10 +174,13 @@ class Database {
   deleteEpisode(dramaId, episodeId) {
     const drama = this.getDramaById(dramaId);
     if (!drama) return null;
-    const targetId = Number(episodeId);
-    drama.episodes = (drama.episodes || []).filter(
-      (e) => e.id !== targetId && e.episodeNumber !== targetId
-    );
+    const targetStr = String(episodeId).trim();
+    const targetNum = Number(episodeId);
+    drama.episodes = (drama.episodes || []).filter((e) => {
+      const matchId = String(e.id).trim() === targetStr || (!isNaN(targetNum) && Number(e.id) === targetNum);
+      const matchEpNum = String(e.episodeNumber).trim() === targetStr || (!isNaN(targetNum) && Number(e.episodeNumber) === targetNum);
+      return !matchId && !matchEpNum;
+    });
     drama.totalEpisodes = drama.episodes.length;
     this.save();
     return drama.episodes;
@@ -193,9 +198,11 @@ class Database {
   updateEpisode(dramaId, episodeId, episodeData) {
     const drama = this.getDramaById(dramaId);
     if (!drama) return null;
-    const targetId = Number(episodeId);
+    const targetStr = String(episodeId).trim();
+    const targetNum = Number(episodeId);
     const index = (drama.episodes || []).findIndex(
-      (e) => e.id === targetId || e.episodeNumber === targetId
+      (e) => String(e.id).trim() === targetStr || String(e.episodeNumber).trim() === targetStr ||
+             (!isNaN(targetNum) && (Number(e.id) === targetNum || Number(e.episodeNumber) === targetNum))
     );
     if (index === -1) return null;
     drama.episodes[index] = {
@@ -208,7 +215,9 @@ class Database {
   }
 
   deleteDrama(dramaId) {
-    const index = this.data.dramas.findIndex((d) => d.id === dramaId);
+    if (!dramaId) return false;
+    const targetIdStr = String(dramaId).trim();
+    const index = this.data.dramas.findIndex((d) => String(d.id).trim() === targetIdStr);
     if (index === -1) return false;
     this.data.dramas.splice(index, 1);
     this.save();
