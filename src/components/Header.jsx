@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Coins,
@@ -20,20 +20,40 @@ export default function Header() {
     setIsDailyModalOpen,
     hasCheckedInToday,
     setActiveTab,
-    openAdmin
+    openAdmin,
+    isAdmin,
+    setIsAdminAuthModalOpen
   } = useApp();
+
+  const logoTapCountRef = useRef(0);
+  const logoTapTimerRef = useRef(null);
+
+  const handleLogoClick = () => {
+    haptic.light();
+    setActiveTab('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Stealth Admin Trigger: Tap logo 5 times in 2.5 seconds to open PIN modal
+    logoTapCountRef.current += 1;
+    if (logoTapTimerRef.current) clearTimeout(logoTapTimerRef.current);
+    logoTapTimerRef.current = setTimeout(() => {
+      logoTapCountRef.current = 0;
+    }, 2500);
+
+    if (logoTapCountRef.current >= 5) {
+      logoTapCountRef.current = 0;
+      haptic.heavy();
+      setIsAdminAuthModalOpen(true);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 bg-[#0b0c13]/95 backdrop-blur-xl border-b border-white/5 px-3 sm:px-6 py-2.5 transition-all">
       <div className="w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex items-center justify-between gap-2">
         {/* Brand Logo & Name */}
         <div 
-          className="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform shrink-0"
-          onClick={() => {
-            haptic.light();
-            setActiveTab('home');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          className="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform shrink-0 select-none"
+          onClick={handleLogoClick}
         >
           <div className="relative w-9 h-9 rounded-2xl overflow-hidden shadow-lg shadow-red-950/40 ring-1.5 ring-red-500/30 flex-shrink-0 bg-black">
             <img
@@ -106,18 +126,20 @@ export default function Header() {
             <span className="text-[10px] font-bold uppercase">{lang === 'km' ? 'KM' : 'EN'}</span>
           </button>
 
-          {/* Quick + Add Drama / Admin Button */}
-          <button
-            onClick={() => {
-              haptic.medium();
-              openAdmin('addDrama');
-            }}
-            className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-xs active:scale-95 transition-transform shadow-md shadow-purple-900/40"
-            title="Admin"
-          >
-            <Plus size={13} />
-            <span className="text-[10px] font-bold">{lang === 'km' ? 'រឿង' : 'Add'}</span>
-          </button>
+          {/* Quick + Add Drama / Admin Button (Only visible to authorized Admin) */}
+          {isAdmin && (
+            <button
+              onClick={() => {
+                haptic.medium();
+                openAdmin('addDrama');
+              }}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-xs active:scale-95 transition-transform shadow-md shadow-purple-900/40"
+              title="Admin"
+            >
+              <Plus size={13} />
+              <span className="text-[10px] font-bold">{lang === 'km' ? 'រឿង' : 'Add'}</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -31,7 +31,8 @@ export default function Profile() {
     setActiveTab,
     setIsCoinModalOpen,
     setIsDailyModalOpen,
-    openAdmin
+    openAdmin,
+    isAdmin
   } = useApp();
 
   const [showAdminPinModal, setShowAdminPinModal] = useState(false);
@@ -195,45 +196,50 @@ export default function Profile() {
           <ExternalLink size={16} className="text-gray-500" />
         </div>
 
-        {/* Quick Add New Drama */}
-        <div
-          onClick={() => {
-            haptic.medium();
-            openAdmin('addDrama');
-          }}
-          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors border-b border-white/5"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
-              <Plus size={16} />
+        {/* Admin Only Actions (Completely hidden from regular customers) */}
+        {isAdmin && (
+          <>
+            {/* Quick Add New Drama */}
+            <div
+              onClick={() => {
+                haptic.medium();
+                openAdmin('addDrama');
+              }}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors border-b border-white/5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <Plus size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">+ បន្ថែមរឿងថ្មី (Add New Drama)</p>
+                  <p className="text-[10px] text-purple-300">បញ្ចូលរឿងភាគ និងរូបភាព Poster ថ្មី</p>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-gray-500" />
             </div>
-            <div>
-              <p className="text-xs font-bold text-white">+ បន្ថែមរឿងថ្មី (Add New Drama)</p>
-              <p className="text-[10px] text-purple-300">បញ្ចូលរឿងភាគ និងរូបភាព Poster ថ្មី</p>
-            </div>
-          </div>
-          <ChevronRight size={16} className="text-gray-500" />
-        </div>
 
-        {/* Admin CMS Access */}
-        <div
-          onClick={() => {
-            haptic.light();
-            openAdmin('manage');
-          }}
-          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
-              <Shield size={16} />
+            {/* Admin CMS Access */}
+            <div
+              onClick={() => {
+                haptic.light();
+                openAdmin('manage');
+              }}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                  <Shield size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">{t('adminPanel')} (CMS)</p>
+                  <p className="text-[10px] text-gray-400">គ្រប់គ្រងរឿង និងភាគ (Manage dramas & episodes)</p>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-gray-500" />
             </div>
-            <div>
-              <p className="text-xs font-bold text-white">{t('adminPanel')} (CMS)</p>
-              <p className="text-[10px] text-gray-400">គ្រប់គ្រងរឿង និងភាគ (Manage dramas & episodes)</p>
-            </div>
-          </div>
-          <ChevronRight size={16} className="text-gray-500" />
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

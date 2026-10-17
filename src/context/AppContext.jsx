@@ -108,15 +108,27 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // Telegram Admin Authorization Check
+  const ADMIN_TELEGRAM_IDS = ['211223427'];
+  const ADMIN_TELEGRAM_USERNAMES = ['chansoksieng'];
+
+  const isTelegramAdmin = Boolean(
+    user &&
+    (
+      ADMIN_TELEGRAM_IDS.includes(String(user.id)) ||
+      (user.username && ADMIN_TELEGRAM_USERNAMES.includes(String(user.username).toLowerCase().replace(/^@/, '')))
+    )
+  );
+
   const [authenticatedAdminPin, setAuthenticatedAdminPinState] = useState(() => {
     try {
       return (
         sessionStorage.getItem('siengstudio_admin_pin') ||
         localStorage.getItem('siengstudio_admin_pin') ||
-        '88@48*'
+        ''
       );
     } catch (e) {
-      return '88@48*';
+      return '';
     }
   });
 
@@ -133,15 +145,22 @@ export const AppProvider = ({ children }) => {
     } catch (e) {}
   };
 
+  // Granted if user is verified Telegram Admin or has verified master PIN
+  const isAdmin = isTelegramAdmin || Boolean(authenticatedAdminPin && authenticatedAdminPin.trim());
+
+  useEffect(() => {
+    if (isTelegramAdmin && !authenticatedAdminPin) {
+      setAuthenticatedAdminPin('88@48*');
+    }
+  }, [isTelegramAdmin, authenticatedAdminPin]);
+
   const [adminInitialTab, setAdminInitialTab] = useState('manage');
   const [isAdminAuthModalOpen, setIsAdminAuthModalOpen] = useState(false);
   const [pendingAdminTargetTab, setPendingAdminTargetTab] = useState('manage');
 
   const openAdmin = (tab = 'manage') => {
-    const pin = authenticatedAdminPin || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('siengstudio_admin_pin') : null) || '88@48*';
     setAdminInitialTab(tab);
-    if (pin) {
-      if (!authenticatedAdminPin) setAuthenticatedAdminPinState(pin);
+    if (isAdmin) {
       setActiveTab('admin');
     } else {
       setPendingAdminTargetTab(tab);
@@ -368,6 +387,8 @@ export const AppProvider = ({ children }) => {
         setIsAdminAuthModalOpen,
         pendingAdminTargetTab,
         openAdmin,
+        isAdmin,
+        isTelegramAdmin,
         screenMode,
         setScreenMode,
         toggleScreenMode,

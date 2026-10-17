@@ -63,11 +63,21 @@ const upload = multer({
 // Admin Middleware Check
 const checkAdminPin = (req, res, next) => {
   const pin = req.headers['x-admin-pin'] || req.body?.adminPin || req.query?.adminPin;
+  const telegramUserId = req.headers['x-telegram-user-id'] || req.body?.telegramUserId || req.query?.telegramUserId;
   const configuredPin = process.env.ADMIN_PIN || '88@48*';
-  if (!pin || String(pin) !== String(configuredPin)) {
-    return res.status(401).json({ success: false, message: 'Invalid Admin PIN' });
+  const adminIds = [
+    '211223427',
+    ...(process.env.ADMIN_TELEGRAM_ID || '').split(',').map((s) => s.trim()).filter(Boolean),
+    ...(db.data?.adminTelegramIds || []).map((s) => String(s).trim())
+  ];
+
+  const isPinValid = pin && String(pin) === String(configuredPin);
+  const isTelegramAdmin = telegramUserId && adminIds.includes(String(telegramUserId));
+
+  if (isPinValid || isTelegramAdmin) {
+    return next();
   }
-  next();
+  return res.status(401).json({ success: false, message: 'Invalid Admin PIN or Unauthorized Account' });
 };
 
 // --- API Routes ---
@@ -412,6 +422,27 @@ app.post('/api/stars/confirm', (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Admin Access & Privilege Verification
+app.post('/api/admin/check-access', (req, res) => {
+  const { telegramId, username, pin } = req.body;
+  const configuredPin = process.env.ADMIN_PIN || '88@48*';
+  const adminIds = [
+    '211223427',
+    ...(process.env.ADMIN_TELEGRAM_ID || '').split(',').map((s) => s.trim()).filter(Boolean),
+    ...(db.data?.adminTelegramIds || []).map((s) => String(s).trim())
+  ];
+  const adminUsernames = ['chansoksieng'];
+
+  const isIdMatch = telegramId && adminIds.includes(String(telegramId));
+  const isUsernameMatch = username && adminUsernames.includes(String(username).toLowerCase().replace(/^@/, ''));
+  const isPinMatch = pin && String(pin) === String(configuredPin);
+
+  if (isIdMatch || isUsernameMatch || isPinMatch) {
+    return res.json({ success: true, isAdmin: true, defaultPin: configuredPin });
+  }
+  return res.json({ success: true, isAdmin: false });
 });
 
 // Admin PIN Verification

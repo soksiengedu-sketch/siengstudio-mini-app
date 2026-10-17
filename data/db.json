@@ -1388,7 +1388,9 @@
       "firstName": "បណ្ណាគារគ្រូយើង",
       "lastName": "និងបោះពុម្ព",
       "username": "officecail"
-    }
   },
-  "payments": {}
+  "payments": {},
+  "adminTelegramIds": [
+    "211223427"
+  ]
 }

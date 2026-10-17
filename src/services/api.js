@@ -44,6 +44,20 @@ export function getSavedAdminPin(adminPin) {
   return '88@48*';
 }
 
+export function getAdminHeaders(adminPin) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-admin-pin': getSavedAdminPin(adminPin)
+  };
+  try {
+    const tgUser = typeof window !== 'undefined' ? window.Telegram?.WebApp?.initDataUnsafe?.user : null;
+    if (tgUser?.id) {
+      headers['x-telegram-user-id'] = String(tgUser.id);
+    }
+  } catch (e) {}
+  return headers;
+}
+
 export const api = {
   async getDramas() {
     try {

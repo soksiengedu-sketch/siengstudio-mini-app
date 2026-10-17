@@ -7,7 +7,7 @@ import { Flame, Sparkles, Trophy, History, Play, Users, ArrowRight, Plus, Film }
 import { haptic } from '../services/telegram';
 
 export default function Home() {
-  const { t, lang, openDrama, history, setIsShareModalOpen, openAdmin } = useApp();
+  const { t, lang, openDrama, history, setIsShareModalOpen, openAdmin, isAdmin } = useApp();
   const [dramas, setDramas] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -185,15 +185,17 @@ export default function Home() {
             <p className="text-xs text-gray-400 mt-0.5">រឿងភាគទើបតែបញ្ចេញថ្មីៗ ទស្សនាបានមុនគេ</p>
           </div>
 
-          <button
-            onClick={() => {
-              haptic.medium();
-              openAdmin('addDrama');
-            }}
-            className="text-[11px] sm:text-xs font-bold text-purple-300 hover:text-white flex items-center gap-1 bg-gradient-to-r from-purple-600/30 to-pink-600/30 px-3 py-1.5 rounded-xl border border-purple-500/30 active:scale-95 transition-all shadow-sm"
-          >
-            <Plus size={14} /> {lang === 'km' ? '+ បន្ថែមរឿងថ្មី' : '+ Add Drama'}
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => {
+                haptic.medium();
+                openAdmin('addDrama');
+              }}
+              className="text-[11px] sm:text-xs font-bold text-purple-300 hover:text-white flex items-center gap-1 bg-gradient-to-r from-purple-600/30 to-pink-600/30 px-3 py-1.5 rounded-xl border border-purple-500/30 active:scale-95 transition-all shadow-sm"
+            >
+              <Plus size={14} /> {lang === 'km' ? '+ បន្ថែមរឿងថ្មី' : '+ Add Drama'}
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-4.5">

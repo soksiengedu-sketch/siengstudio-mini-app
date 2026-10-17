@@ -28,10 +28,18 @@ function MainApp() {
     setActiveTab,
     currentDramaId,
     currentEpisodeId,
-    screenMode
+    screenMode,
+    isAdmin
   } = useApp();
 
   const [currentDrama, setCurrentDrama] = useState(null);
+
+  // Security Guard: Prevent unauthorized users from viewing admin tab
+  useEffect(() => {
+    if (activeTab === 'admin' && !isAdmin) {
+      setActiveTab('home');
+    }
+  }, [activeTab, isAdmin]);
 
   // Initialize Telegram WebApp features
   useEffect(() => {
