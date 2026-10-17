@@ -706,9 +706,10 @@ export default function Admin() {
 
     for (let i = start; i <= end; i++) {
       const isFree = i <= freeUntil;
-      const pad = String(i).padStart(2, '0');
       let url = (batchData.urlPattern || '').trim();
-      url = url.replace(/\{nn\}/g, pad);
+      url = url.replace(/\{nnnn\}/g, String(i).padStart(4, '0'));
+      url = url.replace(/\{nnn\}/g, String(i).padStart(3, '0'));
+      url = url.replace(/\{nn\}/g, String(i).padStart(2, '0'));
       url = url.replace(/\{n\}/g, String(i));
 
       episodes.push({
@@ -2756,8 +2757,12 @@ export default function Admin() {
       {/* ================= TAB: BATCH ADD FROM PATTERN ================= */}
       {activeTab === 'batchAdd' && (
         <form onSubmit={handleBatchAdd} className="mt-4 space-y-3">
-          <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            ⚡ <b>មុខងារបង្កើតភាគស្វ័យប្រវត្តិតាម Pattern</b>៖ ប្រើ <code>{`{n}`}</code> សម្រាប់លេខភាគធម្មតា (1, 2, 3...) ឬ <code>{`{nn}`}</code> សម្រាប់លេខមានសូន្យពីមុខ (01, 02, 03... 10, 11...)។
+          <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs leading-relaxed space-y-1">
+            <p className="font-bold text-white">⚡ របៀបប្រើប្រាស់ Batch URL Pattern ស្វ័យប្រវត្តិ៖</p>
+            <p>• <code>{`{n}`}</code> ៖ សម្រាប់លេខធម្មតា (1, 2, 3... 10... 100...)</p>
+            <p>• <code>{`{nn}`}</code> ៖ សម្រាប់លេខ 2 ខ្ទង់ (01, 02... 99, 100...) (ភាគ 100 ឡើងនៅតែ 100 ធម្មតា)</p>
+            <p>• <code>{`{nnn}`}</code> ៖ សម្រាប់រឿងជាងរយភាគលេខ 3 ខ្ទង់ (001, 002... 010... 099, 100, 101...)</p>
+            <p>• <code>{`{nnnn}`}</code> ៖ សម្រាប់រឿងលេខ 4 ខ្ទង់ (0001, 0002... 0100...)</p>
           </div>
 
           {/* Quick R2 Presets */}
@@ -2815,7 +2820,7 @@ export default function Admin() {
 
           <div>
             <label className="text-[11px] font-bold text-gray-300">
-              Video URL Pattern (ប្រើ <code>{`{n}`}</code> ឬ <code>{`{nn}`}</code>)
+              Video URL Pattern (ប្រើ <code>{`{n}`}</code>, <code>{`{nn}`}</code>, ឬ <code>{`{nnn}`}</code> សម្រាប់រឿងជាងរយភាគ)
             </label>
             <input
               type="text"
@@ -2891,12 +2896,16 @@ export default function Admin() {
             <p className="font-mono truncate">
               Ep {batchData.startEp}:{' '}
               {batchData.urlPattern
+                .replace(/\{nnnn\}/g, String(batchData.startEp).padStart(4, '0'))
+                .replace(/\{nnn\}/g, String(batchData.startEp).padStart(3, '0'))
                 .replace(/\{nn\}/g, String(batchData.startEp).padStart(2, '0'))
                 .replace(/\{n\}/g, String(batchData.startEp))}
             </p>
             <p className="font-mono truncate">
               Ep {batchData.totalEp}:{' '}
               {batchData.urlPattern
+                .replace(/\{nnnn\}/g, String(batchData.totalEp).padStart(4, '0'))
+                .replace(/\{nnn\}/g, String(batchData.totalEp).padStart(3, '0'))
                 .replace(/\{nn\}/g, String(batchData.totalEp).padStart(2, '0'))
                 .replace(/\{n\}/g, String(batchData.totalEp))}
             </p>
