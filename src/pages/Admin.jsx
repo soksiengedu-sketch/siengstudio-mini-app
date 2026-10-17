@@ -39,7 +39,13 @@ import {
   CheckCheck,
   ShieldCheck,
   Loader2,
-  Save
+  Save,
+  Activity,
+  Clock,
+  CreditCard,
+  Flame,
+  DollarSign,
+  UserCheck
 } from 'lucide-react';
 import { haptic } from '../services/telegram';
 
@@ -129,6 +135,7 @@ export default function Admin() {
   // --- Superpower 1: Analytics States ---
   const [analytics, setAnalytics] = useState(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [lastAnalyticsRefresh, setLastAnalyticsRefresh] = useState(null);
 
   // --- Superpower 2: Push Notification / Broadcast States ---
   const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
@@ -282,6 +289,7 @@ export default function Admin() {
       const data = await api.getAnalytics(activePin);
       if (data && data.success) {
         setAnalytics(data);
+        setLastAnalyticsRefresh(new Date());
       }
     } catch (e) {
       console.warn('Failed to load analytics:', e);
@@ -289,6 +297,17 @@ export default function Admin() {
       setLoadingAnalytics(false);
     }
   };
+
+  // Real-time Auto-Refresh: updates analytics every 10 seconds while viewing the Analytics tab
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      loadAnalytics();
+      const interval = setInterval(() => {
+        loadAnalytics();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, activePin]);
 
   const handleDramaChange = (newId) => {
     setSelectedDramaId(newId);
@@ -1701,93 +1720,311 @@ export default function Admin() {
       {/* ================= TAB: ANALYTICS DASHBOARD ================= */}
       {activeTab === 'analytics' && (
         <div className="mt-4 space-y-4">
-          {/* Header & Refresh */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-                <BarChart3 size={18} />
+          {/* Header & Live Auto-Refresh Status */}
+          <div className="p-4 rounded-3xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-blue-950/40 border border-amber-500/20 shadow-lg space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+                  <BarChart3 size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-white">Dashboard វិភាគស្ថិតិ (Real-Time Analytics)</h3>
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-black">
+                      <span className="flex h-1.5 w-1.5 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                      </span>
+                      <span>LIVE (10s)</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-300">
+                    ទិន្នន័យជាក់ស្តែងគណនាផ្ទាល់ពី Database (Users, អេពីសូដ, កាក់, ការទស្សនា និងចំណូលពិត)
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-black text-white">Dashboard វិភាគស្ថិតិ (Analytics)</h3>
-                <p className="text-[10px] text-gray-400">ទិន្នន័យជាក់ស្តែងនៃអ្នកប្រើប្រាស់ ការទស្សនា និងការចំណាយកាក់</p>
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                {lastAnalyticsRefresh && (
+                  <span className="text-[10px] text-gray-400 font-mono hidden sm:inline">
+                    Update: {lastAnalyticsRefresh.toLocaleTimeString()}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    haptic.light();
+                    loadAnalytics();
+                  }}
+                  disabled={loadingAnalytics}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-gray-200 hover:text-white text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all"
+                  title="ទាញទិន្នន័យថ្មីពី Database"
+                >
+                  <RefreshCw size={13} className={loadingAnalytics ? 'animate-spin text-amber-400' : ''} />
+                  <span>{loadingAnalytics ? 'កំពុងគណនា...' : 'Refresh ភ្លាមៗ'}</span>
+                </button>
               </div>
             </div>
-            <button
-              onClick={() => {
-                haptic.light();
-                loadAnalytics();
-              }}
-              disabled={loadingAnalytics}
-              className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white text-xs font-bold flex items-center gap-1 active:scale-95"
-            >
-              <RefreshCw size={13} className={loadingAnalytics ? 'animate-spin' : ''} />
-              <span>Refresh</span>
-            </button>
           </div>
 
-          {/* KPI Stat Cards Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* 1. Daily Active Users (DAU) */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-white/5 to-white/5 border border-emerald-500/30 relative overflow-hidden">
+          {/* KPI Stat Cards Grid (6 Metric Cards) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {/* 1. Daily Active Users (DAU) & Online */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-white/5 to-white/5 border border-emerald-500/30 relative overflow-hidden flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">User សកម្មប្រចាំថ្ងៃ (DAU)</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">User សកម្ម (DAU)</span>
                 <span className="flex h-2 w-2 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-emerald-400 mt-1">
-                {analytics?.summary?.activeUsersToday || 96}
+              <h2 className="text-2xl font-black text-emerald-400 my-1">
+                {(analytics?.summary?.activeUsersToday ?? 0).toLocaleString()}
               </h2>
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                សរុប {analytics?.summary?.totalUsers || 148} subscribers
-              </p>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-emerald-300 font-medium">
+                  🟢 {(analytics?.summary?.onlineUsersNow ?? 0).toLocaleString()} online ឥឡូវនេះ
+                </p>
+                <p className="text-gray-400">
+                  សរុប {(analytics?.summary?.totalUsers ?? 0).toLocaleString()} នាក់
+                </p>
+              </div>
             </div>
 
-            {/* 2. Total Coins Spent */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-950/40 via-white/5 to-white/5 border border-amber-500/30">
+            {/* 2. Real Revenue (USD & KHR) */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-white/5 to-white/5 border border-cyan-500/30 flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">កាក់ដែលបានចំណាយ</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">ចំណូលសរុប (Revenue)</span>
+                <CreditCard size={14} className="text-cyan-400" />
+              </div>
+              <h2 className="text-2xl font-black text-cyan-400 my-1">
+                ${(analytics?.summary?.revenueUsd ?? 0).toFixed(2)}
+              </h2>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-cyan-300 font-medium font-mono">
+                  + ៛{(analytics?.summary?.revenueKhr ?? 0).toLocaleString()}
+                </p>
+                <p className="text-gray-400">
+                  {(analytics?.summary?.totalPaidTransactions ?? 0)} ទូទាត់ជោគជ័យ
+                </p>
+              </div>
+            </div>
+
+            {/* 3. Total Coins Spent */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-950/40 via-white/5 to-white/5 border border-amber-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">កាក់បានចំណាយ</span>
                 <Coins size={14} className="text-amber-400" />
               </div>
-              <h2 className="text-2xl font-black text-amber-400 mt-1">
-                {(analytics?.summary?.totalCoinsSpent || 3840).toLocaleString()}
+              <h2 className="text-2xl font-black text-amber-400 my-1">
+                {(analytics?.summary?.totalCoinsSpent ?? 0).toLocaleString()}
               </h2>
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                កាក់កំពុងចរាចរ: {(analytics?.summary?.totalCoinsInCirculation || 12500).toLocaleString()}
-              </p>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-amber-300 font-medium">
+                  ថ្ងៃនេះ: {(analytics?.summary?.coinsSpentToday ?? 0).toLocaleString()} កាក់
+                </p>
+                <p className="text-gray-400">
+                  ចរាចរ: {(analytics?.summary?.totalCoinsInCirculation ?? 0).toLocaleString()}
+                </p>
+              </div>
             </div>
 
-            {/* 3. Total Views */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-white/5 to-white/5 border border-purple-500/30">
+            {/* 4. Total Views */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-purple-950/40 via-white/5 to-white/5 border border-purple-500/30 flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">ការទស្សនាសរុប</span>
                 <Eye size={14} className="text-purple-400" />
               </div>
-              <h2 className="text-2xl font-black text-purple-400 mt-1">
-                {analytics?.summary?.totalViews || stats.totalViews}
+              <h2 className="text-2xl font-black text-purple-400 my-1">
+                {(analytics?.summary?.totalViewsNum ?? 0).toLocaleString()}
               </h2>
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                {stats.totalEpisodes} ភាគ streaming
-              </p>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-purple-300 font-medium">
+                  {analytics?.summary?.totalEpisodes ?? stats.totalEpisodes} ភាគ streaming
+                </p>
+                <p className="text-gray-400">
+                  {analytics?.summary?.totalWatchSessions ?? 0} sessions
+                </p>
+              </div>
             </div>
 
-            {/* 4. VIP Subscribers */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-white/5 to-white/5 border border-pink-500/30">
+            {/* 5. VIP Subscribers */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-white/5 to-white/5 border border-pink-500/30 flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">សមាជិក VIP</span>
                 <Sparkles size={14} className="text-pink-400" />
               </div>
-              <h2 className="text-2xl font-black text-pink-400 mt-1">
-                {analytics?.summary?.totalVipUsers || 34}
+              <h2 className="text-2xl font-black text-pink-400 my-1">
+                {(analytics?.summary?.totalVipUsers ?? 0).toLocaleString()}
               </h2>
-              <p className="text-[10px] text-gray-400 mt-0.5">
-                VIP Pass សកម្ម
-              </p>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-pink-300 font-medium">
+                  VIP Pass សកម្ម (Active)
+                </p>
+                <p className="text-gray-400">
+                  ទស្សនាមិនកំណត់
+                </p>
+              </div>
+            </div>
+
+            {/* 6. Content Catalog */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-950/40 via-white/5 to-white/5 border border-blue-500/30 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">រឿង និងភាគសរុប</span>
+                <Film size={14} className="text-blue-400" />
+              </div>
+              <h2 className="text-2xl font-black text-blue-400 my-1">
+                {(analytics?.summary?.totalDramas ?? dramas.length).toLocaleString()}
+              </h2>
+              <div className="space-y-0.5 text-[10px]">
+                <p className="text-blue-300 font-medium">
+                  {(analytics?.summary?.totalEpisodes ?? stats.totalEpisodes).toLocaleString()} ភាគទាំងអស់
+                </p>
+                <p className="text-gray-400">
+                  Cloudflare R2 + CDN
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Top-Viewed Dramas Leaderboard */}
+          {/* 7-Day Trend Chart (Dynamic Scaling Based on Live Data) */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <TrendingUp size={18} className="text-emerald-400" />
+                <h4 className="text-xs font-black text-white">
+                  និន្នាការសកម្មភាព ៧ ថ្ងៃចុងក្រោយ (7-Day Real Activity & Coins Trend)
+                </h4>
+              </div>
+              <span className="text-[10px] text-gray-400 font-mono">Live DB Calculation</span>
+            </div>
+
+            {(() => {
+              const trendList = analytics?.trend7Days || [];
+              const maxDau = Math.max(...trendList.map((t) => t.dau || 0), 1);
+              return (
+                <div className="grid grid-cols-7 gap-1.5 pt-2 items-end h-36">
+                  {trendList.map((t, idx) => {
+                    const dauVal = t.dau || 0;
+                    const heightPct = Math.max(dauVal > 0 ? Math.round((dauVal / maxDau) * 85) + 15 : 8, 8);
+                    return (
+                      <div key={idx} className="flex flex-col items-center gap-1.5 h-full justify-end group">
+                        <span className="text-[9px] font-mono text-emerald-400 font-bold group-hover:scale-110 transition-transform">
+                          {dauVal}
+                        </span>
+                        <div className="w-full h-full flex items-end">
+                          <div
+                            className={`w-full rounded-t-lg transition-all duration-500 ${
+                              dauVal > 0
+                                ? 'bg-gradient-to-t from-emerald-600 via-teal-500 to-cyan-400 shadow-lg shadow-teal-900/30'
+                                : 'bg-white/10'
+                            }`}
+                            style={{ height: `${heightPct}%` }}
+                            title={`${t.date}: ${dauVal} users, ${t.coinsSpent || 0} coins spent, ${t.watchSessions || 0} watches`}
+                          />
+                        </div>
+                        <span className="text-[9px] font-mono text-gray-400 truncate w-full text-center">
+                          {t.date}
+                        </span>
+                        <span className="text-[8px] font-mono text-amber-400/80 -mt-1 hidden sm:block">
+                          {t.coinsSpent > 0 ? `${t.coinsSpent}c` : '0c'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            <div className="flex items-center justify-between text-[10px] text-gray-400 pt-2 border-t border-white/5">
+              <span>🟢 ក្រាហ្វិកខាងលើគណនាពីចំនួន Users សកម្ម (DAU) ពិតប្រាកដក្នុង 7 ថ្ងៃចុងក្រោយ</span>
+              <span className="font-mono text-amber-400">c = កាក់បានដោះសោ</span>
+            </div>
+          </div>
+
+          {/* Real-Time Live Activity Feed (ចរន្តសកម្មភាពអ្នកប្រើប្រាស់ផ្ទាល់ៗ) */}
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Activity size={18} className="text-cyan-400 animate-pulse" />
+                <h4 className="text-xs font-black text-white">
+                  ចរន្តសកម្មភាពអ្នកប្រើប្រាស់ផ្ទាល់ៗ នាពេលនេះ (Live User Activity Stream)
+                </h4>
+              </div>
+              <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
+                <Clock size={11} /> 15 សកម្មភាពថ្មីៗ
+              </span>
+            </div>
+
+            {analytics?.recentActivities && analytics.recentActivities.length > 0 ? (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1 divide-y divide-white/5">
+                {analytics.recentActivities.map((act) => {
+                  const isWatch = act.type === 'watch';
+                  const isUnlock = act.type === 'unlock';
+                  const isCheckin = act.type === 'checkin';
+
+                  const iconEl = isWatch ? (
+                    <Play size={13} className="text-blue-400" />
+                  ) : isUnlock ? (
+                    <Coins size={13} className="text-amber-400" />
+                  ) : isCheckin ? (
+                    <Sparkles size={13} className="text-emerald-400" />
+                  ) : (
+                    <CreditCard size={13} className="text-pink-400" />
+                  );
+
+                  const badgeBg = isWatch
+                    ? 'bg-blue-500/15 border-blue-500/30'
+                    : isUnlock
+                    ? 'bg-amber-500/15 border-amber-500/30'
+                    : isCheckin
+                    ? 'bg-emerald-500/15 border-emerald-500/30'
+                    : 'bg-pink-500/15 border-pink-500/30';
+
+                  return (
+                    <div key={act.id} className="pt-2 flex items-center justify-between gap-2.5 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-7 h-7 rounded-xl flex items-center justify-center border shrink-0 ${badgeBg}`}>
+                          {iconEl}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-white font-bold truncate">
+                            <span className="text-gray-300 font-normal">{act.userName}: </span>
+                            {act.description}
+                          </p>
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {act.dramaTitle ? `រឿង: ${act.dramaTitle}` : 'SiengStudio App'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {act.amount != null && (
+                          <span
+                            className={`text-[10px] font-mono font-bold block ${
+                              isUnlock ? 'text-amber-400' : isCheckin ? 'text-emerald-400' : 'text-cyan-400'
+                            }`}
+                          >
+                            {isUnlock ? `-${act.amount} c` : isCheckin ? `+${act.amount} c` : `$${act.amount}`}
+                          </span>
+                        )}
+                        <span className="text-[9px] text-gray-400 font-mono">
+                          {act.relativeTime || (act.timestamp ? new Date(act.timestamp).toLocaleTimeString() : '')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-center space-y-1.5">
+                <Activity size={24} className="mx-auto text-gray-500" />
+                <p className="text-xs font-bold text-gray-300">មិនទាន់មានសកម្មភាពថ្មីទេ (No Recent Activity Yet)</p>
+                <p className="text-[10px] text-gray-400">
+                  នៅពេលអ្នកប្រើប្រាស់ចូលទស្សនា ដោះសោភាគ ឬ Check-in សកម្មភាពនឹងលេចឡើងនៅទីនេះភ្លាមៗ។
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Top-Viewed Dramas Leaderboard (Real DB Views & View Share) */}
           <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -1796,7 +2033,7 @@ export default function Admin() {
                   រឿងដែលមានអ្នកមើលច្រើនជាងគេ (Top-Viewed Dramas)
                 </h4>
               </div>
-              <span className="text-[10px] text-gray-400 font-mono">Ranked by Views</span>
+              <span className="text-[10px] text-gray-400 font-mono">Ranked by Real Views</span>
             </div>
 
             <div className="space-y-2.5">
@@ -1811,7 +2048,8 @@ export default function Admin() {
                     ? 'bg-amber-700 text-white font-black'
                     : 'bg-white/10 text-gray-400 font-bold';
 
-                const pct = drama.percentage || Math.max(12, Math.round(100 / rank));
+                const pct = drama.percentage ?? 0;
+                const viewCount = (drama.viewsNum ?? (typeof drama.views === 'number' ? drama.views : parseInt(drama.views) || 0)).toLocaleString();
 
                 return (
                   <div
@@ -1827,6 +2065,9 @@ export default function Admin() {
                           src={drama.posterUrl}
                           alt={drama.title}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.src = 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=300&auto=format&fit=crop&q=80';
+                          }}
                         />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1836,14 +2077,14 @@ export default function Admin() {
                         <p className="text-[10px] text-gray-400 truncate mt-0.5">{drama.title}</p>
                         <div className="flex items-center gap-2 mt-1 text-[10px]">
                           <span className="text-amber-400 font-bold flex items-center gap-1">
-                            <Eye size={11} /> {drama.views} មើល
+                            <Eye size={11} /> {viewCount} មើល
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-purple-400 font-bold">
                             {drama.episodesCount || drama.episodes?.length || 0} ភាគ
                           </span>
                           <span className="text-gray-400">•</span>
-                          <span className="text-pink-400 font-bold">❤️ {drama.likes || 120}</span>
+                          <span className="text-pink-400 font-bold">❤️ {drama.likes ?? 0}</span>
                         </div>
                       </div>
                       <button
@@ -1873,46 +2114,6 @@ export default function Admin() {
                 );
               })}
             </div>
-          </div>
-
-          {/* 7-Day Trend Chart */}
-          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <TrendingUp size={18} className="text-emerald-400" />
-                <h4 className="text-xs font-black text-white">
-                  និន្នាការសកម្មភាព ៧ ថ្ងៃចុងក្រោយ (7-Day Activity & Coins Trend)
-                </h4>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-7 gap-1.5 pt-2 items-end h-32">
-              {(analytics?.trend7Days || [
-                { date: '10-10', dau: 65, coinsSpent: 2100 },
-                { date: '10-11', dau: 78, coinsSpent: 2600 },
-                { date: '10-12', dau: 85, coinsSpent: 3000 },
-                { date: '10-13', dau: 92, coinsSpent: 3400 },
-                { date: '10-14', dau: 104, coinsSpent: 3600 },
-                { date: '10-15', dau: 120, coinsSpent: 3750 },
-                { date: '10-16', dau: 148, coinsSpent: 3840 }
-              ]).map((t, idx) => {
-                const maxDau = 150;
-                const heightPct = Math.max(15, Math.round((t.dau / maxDau) * 100));
-                return (
-                  <div key={idx} className="flex flex-col items-center gap-1.5 h-full justify-end">
-                    <span className="text-[9px] font-mono text-emerald-400 font-bold">{t.dau}</span>
-                    <div
-                      className="w-full rounded-t-lg bg-gradient-to-t from-emerald-600 to-teal-400 transition-all"
-                      style={{ height: `${heightPct}%` }}
-                    />
-                    <span className="text-[9px] font-mono text-gray-400">{t.date}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-[10px] text-gray-400 text-center pt-1 border-t border-white/5">
-              ក្រាហ្វិកបង្ហាញចំនួន User សកម្មប្រចាំថ្ងៃ (DAU) កើនឡើងជាលំដាប់
-            </p>
           </div>
         </div>
       )}

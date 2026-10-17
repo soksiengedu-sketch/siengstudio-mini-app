@@ -659,46 +659,66 @@ export const api = {
 
   async getAnalytics(adminPin) {
     try {
-      const res = await fetch(`${API_BASE}/admin/analytics`, {
-        headers: { 'x-admin-pin': getSavedAdminPin(adminPin) }
+      const res = await fetch(`${API_BASE}/admin/analytics?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: getAdminHeaders(adminPin)
       });
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        if (data && data.success) {
+          return data;
+        }
       }
     } catch (err) {
       console.warn('Analytics fetch error:', err);
     }
 
-    // Fallback analytics calculated client-side from cached dramas
+    // Fallback analytics calculated client-side from cached dramas without dummy data
     const cached = getLocalCachedDramas() || [];
     const totalEp = cached.reduce((acc, d) => acc + (d.episodes?.length || 0), 0);
-    const totalViews = cached.reduce((acc, d) => acc + (Number(d.viewsNum) || 1200), 0);
+    const totalViews = cached.reduce((acc, d) => acc + (Number(d.viewsNum) || 0), 0);
+    let formattedViews = '0';
+    if (totalViews >= 1000000) formattedViews = (totalViews / 1000000).toFixed(2) + 'M';
+    else if (totalViews >= 1000) formattedViews = (totalViews / 1000).toFixed(1) + 'K';
+    else formattedViews = totalViews.toLocaleString();
+
     return {
       success: true,
+      timestamp: new Date().toISOString(),
       summary: {
-        totalUsers: 148,
-        activeUsersToday: 96,
+        totalUsers: 0,
+        onlineUsersNow: 0,
+        activeUsersToday: 0,
         totalDramas: cached.length,
         totalEpisodes: totalEp,
-        totalViews: '1.45M',
+        totalViews: formattedViews,
         totalViewsNum: totalViews,
-        totalCoinsSpent: 3840,
-        totalCoinsInCirculation: 12500,
-        totalVipUsers: 34
+        totalWatchSessions: 0,
+        totalCoinsSpent: 0,
+        coinsSpentToday: 0,
+        totalCoinsInCirculation: 0,
+        totalVipUsers: 0,
+        revenueUsd: 0,
+        revenueKhr: 0,
+        totalPaidTransactions: 0
       },
-      topDramas: cached.map((d, i) => ({
-        rank: i + 1,
-        id: d.id,
-        title: d.title,
-        titleKm: d.titleKm || d.title,
-        posterUrl: d.posterUrl,
-        views: d.views || '120K',
-        viewsNum: Number(d.viewsNum) || 120000,
-        likes: d.likes || 1200,
-        episodesCount: d.episodes?.length || 0,
-        percentage: Math.max(10, Math.round(100 / (i + 1)))
-      })),
-      trend7Days: []
+      topDramas: cached.map((d, i) => {
+        const v = Number(d.viewsNum) || 0;
+        return {
+          rank: i + 1,
+          id: d.id,
+          title: d.title,
+          titleKm: d.titleKm || d.title,
+          posterUrl: d.posterUrl,
+          views: d.views || String(v),
+          viewsNum: v,
+          likes: Number(d.likes) || 0,
+          episodesCount: d.episodes?.length || 0,
+          percentage: totalViews > 0 ? Math.round((v / totalViews) * 100) : (i === 0 ? 100 : 0)
+        };
+      }),
+      trend7Days: [],
+      recentActivities: []
     };
   },
 

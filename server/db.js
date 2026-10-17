@@ -260,19 +260,26 @@ class Database {
         isVip: false,
         vipExpiresAt: null,
         unlockedEpisodes: [],
+        unlockHistory: [],
         favorites: [],
         history: [],
         checkInStreak: 1,
         lastCheckInDate: null,
         referrals: [],
         referredBy: null,
-        referralCoinsEarned: 0
+        referralCoinsEarned: 0,
+        createdAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString()
       };
       this.save();
     }
-    // Ensure referral fields exist for existing users
+    // Ensure array and tracking fields exist for existing users
     const u = this.data.users[id];
     if (!Array.isArray(u.referrals)) u.referrals = [];
+    if (!Array.isArray(u.history)) u.history = [];
+    if (!Array.isArray(u.unlockedEpisodes)) u.unlockedEpisodes = [];
+    if (!Array.isArray(u.unlockHistory)) u.unlockHistory = [];
+    if (!u.lastActiveAt) u.lastActiveAt = new Date().toISOString();
     if (u.referredBy === undefined) u.referredBy = null;
     if (u.referralCoinsEarned === undefined) u.referralCoinsEarned = 0;
     return u;
@@ -282,6 +289,7 @@ class Database {
     const idStr = String(userData.id);
     const isNew = !this.data.users[idStr];
     const user = this.getUser(userData.id);
+    user.lastActiveAt = new Date().toISOString();
     user.firstName = userData.first_name || user.firstName;
     user.lastName = userData.last_name || user.lastName;
     user.username = userData.username || user.username;
@@ -318,6 +326,7 @@ class Database {
 
   dailyCheckIn(telegramId) {
     const user = this.getUser(telegramId);
+    user.lastActiveAt = new Date().toISOString();
     const todayStr = new Date().toISOString().slice(0, 10);
 
     const streakRewards = [10, 15, 20, 25, 35, 50, 100];
@@ -364,10 +373,11 @@ class Database {
 
   unlockEpisode(telegramId, dramaId, episodeId) {
     const user = this.getUser(telegramId);
+    user.lastActiveAt = new Date().toISOString();
     const drama = this.getDramaById(dramaId);
     if (!drama) return { success: false, message: 'Drama not found' };
 
-    const ep = drama.episodes?.find((e) => e.id === Number(episodeId));
+    const ep = drama.episodes?.find((e) => e.id === Number(episodeId) || String(e.id) === String(episodeId) || String(e.episodeNumber) === String(episodeId));
     if (!ep) return { success: false, message: 'Episode not found' };
 
     let cost = ep.coinPrice || 20;
@@ -385,6 +395,14 @@ class Database {
     if (!user.unlockedEpisodes.includes(key)) {
       user.unlockedEpisodes.push(key);
     }
+    if (!Array.isArray(user.unlockHistory)) user.unlockHistory = [];
+    user.unlockHistory.unshift({
+      dramaId,
+      episodeId,
+      cost,
+      unlockedAt: new Date().toISOString()
+    });
+    user.totalCoinsSpent = (user.totalCoinsSpent || 0) + cost;
     this.save();
 
     return { success: true, coins: user.coins, unlockedEpisodes: user.unlockedEpisodes };
@@ -392,10 +410,11 @@ class Database {
 
   toggleFavorite(telegramId, dramaId) {
     const user = this.getUser(telegramId);
+    user.lastActiveAt = new Date().toISOString();
     const drama = this.getDramaById(dramaId);
     if (!drama) return { success: false };
 
-    const index = user.favorites.findIndex((f) => f.id === dramaId);
+    const index = user.favorites.findIndex((f) => String(f.id) === String(dramaId));
     if (index >= 0) {
       user.favorites.splice(index, 1);
     } else {
@@ -407,7 +426,8 @@ class Database {
 
   updateHistory(telegramId, dramaId, episodeId, progressSec) {
     const user = this.getUser(telegramId);
-    const existingIdx = user.history.findIndex((h) => h.dramaId === dramaId);
+    user.lastActiveAt = new Date().toISOString();
+    const existingIdx = user.history.findIndex((h) => String(h.dramaId) === String(dramaId));
     const entry = { dramaId, episodeId, progressSec, updatedAt: new Date().toISOString() };
     if (existingIdx >= 0) {
       user.history[existingIdx] = entry;
@@ -415,10 +435,10 @@ class Database {
       user.history.unshift(entry);
     }
 
-    // Increment drama view count
-    const drama = this.data.dramas.find((d) => d.id === dramaId);
+    // Increment drama view count in real-time
+    const drama = this.getDramaById(dramaId);
     if (drama) {
-      drama.viewsNum = (drama.viewsNum || 1000) + 1;
+      drama.viewsNum = (Number(drama.viewsNum) || 0) + 1;
       if (drama.viewsNum >= 1000000) {
         drama.views = (drama.viewsNum / 1000000).toFixed(1) + 'M';
       } else if (drama.viewsNum >= 1000) {
@@ -452,11 +472,14 @@ class Database {
   getAnalytics() {
     const dramas = this.getDramas();
     const users = Object.values(this.data.users || {});
+    const payments = Object.values(this.data.payments || {});
+    const now = Date.now();
     const todayStr = new Date().toISOString().slice(0, 10);
+    const fifteenMinsAgo = now - 15 * 60 * 1000;
 
     const totalDramas = dramas.length;
     const totalEpisodes = dramas.reduce((acc, d) => acc + (d.episodes?.length || 0), 0);
-    const totalViewsNum = dramas.reduce((acc, d) => acc + (Number(d.viewsNum) || 1200), 0);
+    const totalViewsNum = dramas.reduce((acc, d) => acc + (Number(d.viewsNum) || 0), 0);
 
     let formattedViews = '0';
     if (totalViewsNum >= 1000000) {
@@ -464,25 +487,81 @@ class Database {
     } else if (totalViewsNum >= 1000) {
       formattedViews = (totalViewsNum / 1000).toFixed(1) + 'K';
     } else {
-      formattedViews = String(totalViewsNum);
+      formattedViews = totalViewsNum.toLocaleString();
     }
 
-    const totalUsers = Math.max(users.length, 1);
+    const totalUsers = users.length;
+
+    // Real Online Users in last 15 mins
+    const onlineUsersNow = users.filter((u) => {
+      if (!u.lastActiveAt) return false;
+      const t = new Date(u.lastActiveAt).getTime();
+      return !isNaN(t) && t >= fifteenMinsAgo;
+    }).length;
+
+    // Real Active Users Today (DAU)
     const activeUsersToday = users.filter((u) => {
+      const activeToday = u.lastActiveAt?.startsWith(todayStr);
       const checkedInToday = u.lastCheckInDate === todayStr;
       const historyToday = Array.isArray(u.history) && u.history.some((h) => h.updatedAt?.startsWith(todayStr));
-      return checkedInToday || historyToday;
-    }).length || Math.min(totalUsers, Math.max(1, Math.round(totalUsers * 0.65)));
+      const unlockToday = Array.isArray(u.unlockHistory) && u.unlockHistory.some((un) => un.unlockedAt?.startsWith(todayStr));
+      return activeToday || checkedInToday || historyToday || unlockToday;
+    }).length;
 
-    const totalCoinsSpent = users.reduce((acc, u) => acc + ((u.unlockedEpisodes?.length || 0) * 20), 0);
+    // Real Total Coins in Circulation
     const totalCoinsInCirculation = users.reduce((acc, u) => acc + (Number(u.coins) || 0), 0);
-    const totalVipUsers = users.filter((u) => u.isVip).length;
 
-    // Sort Top Dramas by viewsNum descending
+    // Real Coins Spent across all unlocks
+    const totalCoinsSpent = users.reduce((acc, u) => {
+      if (typeof u.totalCoinsSpent === 'number' && u.totalCoinsSpent > 0) {
+        return acc + u.totalCoinsSpent;
+      }
+      if (Array.isArray(u.unlockHistory) && u.unlockHistory.length > 0) {
+        return acc + u.unlockHistory.reduce((s, un) => s + (Number(un.cost) || 20), 0);
+      }
+      return acc + ((u.unlockedEpisodes?.length || 0) * 20);
+    }, 0);
+
+    // Real Coins Spent Today
+    const coinsSpentToday = users.reduce((acc, u) => {
+      if (Array.isArray(u.unlockHistory)) {
+        return acc + u.unlockHistory
+          .filter((un) => un.unlockedAt?.startsWith(todayStr))
+          .reduce((s, un) => s + (Number(un.cost) || 20), 0);
+      }
+      return acc;
+    }, 0);
+
+    // Real Active VIP Users
+    const activeVipUsers = users.filter((u) => {
+      if (!u.isVip) return false;
+      if (!u.vipExpiresAt) return true; // Lifetime
+      const exp = new Date(u.vipExpiresAt).getTime();
+      return !isNaN(exp) && exp > now;
+    }).length;
+
+    // Real Payments & Revenue Analysis
+    const completedPayments = payments.filter((p) => p.isPaid || p.isProcessed);
+    const revenueUsd = completedPayments
+      .filter((p) => (p.currency || 'USD').toUpperCase() === 'USD')
+      .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    const revenueKhr = completedPayments
+      .filter((p) => (p.currency || '').toUpperCase() === 'KHR')
+      .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+    // Real Total Watch Events
+    const totalWatchSessions = users.reduce((acc, u) => acc + (u.history?.length || 0), 0);
+
+    // Real Top Dramas ranked by views
     const sortedDramas = [...dramas].sort((a, b) => (Number(b.viewsNum) || 0) - (Number(a.viewsNum) || 0));
     const topDramas = sortedDramas.map((d, index) => {
-      const views = Number(d.viewsNum) || 1000;
-      const percentage = totalViewsNum > 0 ? Math.round((views / totalViewsNum) * 100) : 0;
+      const views = Number(d.viewsNum) || 0;
+      const percentage = totalViewsNum > 0 ? Math.round((views / totalViewsNum) * 100) : (index === 0 ? 100 : 0);
+      let vStr = '0';
+      if (views >= 1000000) vStr = (views / 1000000).toFixed(1) + 'M';
+      else if (views >= 1000) vStr = (views / 1000).toFixed(1) + 'K';
+      else vStr = String(views);
+
       return {
         rank: index + 1,
         id: d.id,
@@ -490,45 +569,148 @@ class Database {
         titleKm: d.titleKm || d.title,
         posterUrl: d.posterUrl,
         viewsNum: views,
-        views: d.views || `${(views / 1000).toFixed(1)}K`,
-        likes: d.likes || 120,
+        views: d.views || vStr,
+        likes: Number(d.likes) || 0,
         episodesCount: d.episodes?.length || 0,
         percentage
       };
     });
 
-    // 7-day trend (actual / projected)
+    // Real 7-Day Trend
     const trend7Days = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000);
-      const dateKey = d.toISOString().slice(5, 10); // MM-DD
-      const dateFull = d.toISOString().slice(0, 10);
-      const dau = users.filter((u) => u.lastCheckInDate === dateFull || (u.history || []).some((h) => h.updatedAt?.startsWith(dateFull))).length || Math.max(1, Math.round(activeUsersToday * (0.8 + (6 - i) * 0.04)));
-      const spent = Math.round(totalCoinsSpent * (0.1 + (6 - i) * 0.02));
+      const targetTime = now - i * 86400000;
+      const d = new Date(targetTime);
+      const dateKey = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; // MM-DD
+      const dateFull = d.toISOString().slice(0, 10); // YYYY-MM-DD
+
+      // Count actual DAU for this calendar day
+      const dayUsers = users.filter((u) => {
+        const checkIn = u.lastCheckInDate === dateFull;
+        const active = u.lastActiveAt?.startsWith(dateFull);
+        const watch = Array.isArray(u.history) && u.history.some((h) => h.updatedAt?.startsWith(dateFull));
+        const unlock = Array.isArray(u.unlockHistory) && u.unlockHistory.some((un) => un.unlockedAt?.startsWith(dateFull));
+        return checkIn || active || watch || unlock;
+      }).length;
+
+      // Count actual coins spent on this day
+      const dayCoinsSpent = users.reduce((acc, u) => {
+        if (Array.isArray(u.unlockHistory)) {
+          return acc + u.unlockHistory
+            .filter((un) => un.unlockedAt?.startsWith(dateFull))
+            .reduce((s, un) => s + (Number(un.cost) || 20), 0);
+        }
+        return acc;
+      }, 0);
+
+      // Count actual watch sessions on this day
+      const dayWatches = users.reduce((acc, u) => {
+        if (Array.isArray(u.history)) {
+          return acc + u.history.filter((h) => h.updatedAt?.startsWith(dateFull)).length;
+        }
+        return acc;
+      }, 0);
+
       trend7Days.push({
         date: dateKey,
         fullDate: dateFull,
-        dau,
-        coinsSpent: spent
+        dau: dayUsers,
+        coinsSpent: dayCoinsSpent,
+        watches: dayWatches
       });
     }
+
+    // Real-Time Activity Feed (Latest 15 real events)
+    const recentActivities = [];
+    // 1. Watches
+    for (const u of users) {
+      const uName = u.firstName || (u.username ? `@${u.username}` : `User ${String(u.telegramId).slice(-4)}`);
+      if (Array.isArray(u.history)) {
+        for (const h of u.history.slice(0, 6)) {
+          const drama = dramas.find((d) => String(d.id).trim() === String(h.dramaId).trim());
+          recentActivities.push({
+            id: `watch-${u.telegramId}-${h.dramaId}-${h.episodeId}-${h.updatedAt}`,
+            type: 'watch',
+            user: uName,
+            telegramId: u.telegramId,
+            dramaTitle: drama?.titleKm || drama?.title || 'រឿងភាគ',
+            episodeNumber: h.episodeId,
+            time: h.updatedAt,
+            timestamp: new Date(h.updatedAt).getTime() || 0
+          });
+        }
+      }
+      // 2. Unlocks
+      if (Array.isArray(u.unlockHistory)) {
+        for (const un of u.unlockHistory.slice(0, 6)) {
+          const drama = dramas.find((d) => String(d.id).trim() === String(un.dramaId).trim());
+          recentActivities.push({
+            id: `unlock-${u.telegramId}-${un.dramaId}-${un.episodeId}-${un.unlockedAt}`,
+            type: 'unlock',
+            user: uName,
+            telegramId: u.telegramId,
+            dramaTitle: drama?.titleKm || drama?.title || 'រឿងភាគ',
+            episodeNumber: un.episodeId,
+            cost: un.cost || 20,
+            time: un.unlockedAt,
+            timestamp: new Date(un.unlockedAt).getTime() || 0
+          });
+        }
+      }
+      // 3. Check-ins
+      if (u.lastCheckInDate) {
+        recentActivities.push({
+          id: `checkin-${u.telegramId}-${u.lastCheckInDate}`,
+          type: 'checkin',
+          user: uName,
+          telegramId: u.telegramId,
+          streak: u.checkInStreak || 1,
+          time: u.lastCheckInDate,
+          timestamp: new Date(u.lastCheckInDate).getTime() || 0
+        });
+      }
+    }
+    // 4. Payments
+    for (const p of completedPayments) {
+      recentActivities.push({
+        id: `pay-${p.md5}`,
+        type: 'payment',
+        user: `User ${p.telegramId ? String(p.telegramId).slice(-4) : ''}`,
+        telegramId: p.telegramId,
+        amount: p.amount,
+        currency: p.currency || 'USD',
+        payType: p.type || 'coins',
+        time: new Date(p.paidAt || p.createdAt).toISOString(),
+        timestamp: p.paidAt || p.createdAt || 0
+      });
+    }
+
+    // Sort activities by timestamp descending
+    recentActivities.sort((a, b) => b.timestamp - a.timestamp);
 
     return {
       success: true,
       timestamp: new Date().toISOString(),
       summary: {
         totalUsers,
+        onlineUsersNow,
         activeUsersToday,
         totalDramas,
         totalEpisodes,
         totalViewsNum,
         totalViews: formattedViews,
+        totalWatchSessions,
         totalCoinsSpent,
+        coinsSpentToday,
         totalCoinsInCirculation,
-        totalVipUsers
+        totalVipUsers: activeVipUsers,
+        revenueUsd,
+        revenueKhr,
+        totalPaidTransactions: completedPayments.length
       },
       topDramas,
-      trend7Days
+      trend7Days,
+      recentActivities: recentActivities.slice(0, 15)
     };
   }
 
