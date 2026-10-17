@@ -112,3 +112,29 @@ export const openTelegramInvoice = (invoiceLink) => {
     }
   });
 };
+
+export const setupTelegramBackButton = (onBack) => {
+  if (tg?.BackButton) {
+    try {
+      tg.BackButton.show();
+      tg.BackButton.offClick();
+      if (typeof onBack === 'function') {
+        tg.BackButton.onClick(onBack);
+      }
+    } catch (e) {
+      console.warn('Telegram BackButton error:', e);
+    }
+  }
+};
+
+export const hideTelegramBackButton = () => {
+  if (tg?.BackButton) {
+    try {
+      tg.BackButton.hide();
+      tg.BackButton.offClick();
+    } catch (e) {
+      console.warn('Telegram hideBackButton error:', e);
+    }
+  }
+};
+

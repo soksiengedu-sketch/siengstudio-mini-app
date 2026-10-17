@@ -63,9 +63,9 @@ export default function DramaDetail({ dramaId, onBack }) {
   const episodes = drama.episodes || [];
 
   return (
-    <div className="min-h-screen bg-[#0b0c13] pb-24 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#0b0c13] pb-24 max-w-md mx-auto">
       {/* Backdrop Header */}
-      <div className="relative w-full h-72 sm:h-96 md:h-[440px] md:rounded-3xl overflow-hidden md:mt-3 shadow-2xl border border-white/5">
+      <div className="relative w-full h-72 overflow-hidden shadow-2xl">
         <img
           src={drama.bannerUrl || drama.posterUrl}
           alt={title}

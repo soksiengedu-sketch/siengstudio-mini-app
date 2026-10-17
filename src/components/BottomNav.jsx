@@ -20,10 +20,8 @@ export default function BottomNav() {
   const isCompact = screenMode === 'compact';
 
   return (
-    <nav className={`fixed bottom-0 left-0 right-0 z-40 bg-[#0c0d16]/95 backdrop-blur-lg border-t border-white/5 pb-safe transition-all duration-300 ${
-      isCompact ? 'max-w-md mx-auto md:rounded-b-[32px]' : 'md:hidden'
-    }`}>
-      <div className={`w-full ${isCompact ? 'max-w-md' : 'max-w-2xl'} mx-auto px-4 py-2 flex items-center justify-around`}>
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c0d16]/95 backdrop-blur-xl border-t border-white/5 pb-safe transition-all duration-300">
+      <div className="w-full max-w-md mx-auto px-2 py-1.5 flex items-center justify-around">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

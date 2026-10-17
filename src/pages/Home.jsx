@@ -196,42 +196,10 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
+        <div className="grid grid-cols-3 gap-2.5">
           {newReleases.map((drama) => (
-            <DramaCard key={drama.id} drama={drama} size="grid" />
+            <DramaCard key={drama.id} drama={drama} size="small" />
           ))}
-        </div>
-      </section>
-
-      {/* Website Highlights / Platform Features (Professional Web Experience) */}
-      <section className="mt-12 px-4 sm:px-6">
-        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-gray-900 border border-purple-500/20 shadow-2xl relative overflow-hidden">
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="space-y-2 text-center md:text-left">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold">
-                <Film size={13} /> SiengStudio Cinema Experience
-              </div>
-              <h3 className="text-xl sm:text-2xl font-black text-white">
-                ទស្សនារឿងភាគខ្លីគ្មានដែនកំណត់ គ្រប់ពេលវេលា គ្រប់ទីកន្លែង
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-300 max-w-xl">
-                គាំទ្រការទស្សនាលើគ្រប់ឧបករណ៍ (ទូរស័ព្ទ, កុំព្យូទ័រ Laptop/Desktop, ថេប្លេត) ជាមួយគុណភាពច្បាស់ត្រជាក់ភ្នែក និងការទូទាត់រហ័សទាន់ចិត្តជាមួយ Bakong KHQR។
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => {
-                  haptic.medium();
-                  openAdmin('dashboard');
-                }}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-purple-900/50 active:scale-95 transition-all"
-              >
-                🎬 រុករកបន្ថែម
-              </button>
-            </div>
-          </div>
         </div>
       </section>
     </div>

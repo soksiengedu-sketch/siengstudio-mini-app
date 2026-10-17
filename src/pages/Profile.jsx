@@ -58,7 +58,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-4 space-y-4 max-w-4xl mx-auto">
+    <div className="min-h-screen pb-24 px-4 pt-3 space-y-4 max-w-md mx-auto">
       {/* Profile Header Card */}
       <div className="relative overflow-hidden rounded-3xl bg-white/5 border border-white/5 p-5 flex items-center gap-4">
         <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-purple-900/40 border-2 border-purple-500/30 flex-shrink-0">
