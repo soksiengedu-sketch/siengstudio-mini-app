@@ -85,7 +85,7 @@ function MainApp() {
         className={`w-full flex flex-col transition-all duration-300 ${
           isCompact
             ? 'max-w-md mx-auto bg-[#0b0c13] min-h-screen md:min-h-[850px] md:rounded-[32px] md:border md:border-white/10 md:shadow-[0_0_60px_rgba(168,85,247,0.2)] overflow-x-hidden relative'
-            : 'max-w-md mx-auto min-h-screen bg-[#0b0c13] overflow-x-hidden relative flex-1'
+            : 'w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto min-h-screen bg-[#0b0c13] overflow-x-hidden relative flex-1'
         }`}
       >
         {/* Top Header (hidden when watching full-screen reel player) */}

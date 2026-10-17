@@ -69,7 +69,7 @@ export default function Wallet() {
   ];
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3 space-y-4 max-w-md mx-auto">
+    <div className="min-h-screen pb-24 px-4 sm:px-6 pt-3 space-y-4 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-5xl mx-auto">
       {/* Wallet Card */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-tr from-[#1f1b3c] via-[#2d1b46] to-[#401948] p-5 border border-purple-500/30 shadow-2xl">
         <div className="flex items-center justify-between">

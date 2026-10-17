@@ -63,9 +63,9 @@ export default function DramaDetail({ dramaId, onBack }) {
   const episodes = drama.episodes || [];
 
   return (
-    <div className="min-h-screen bg-[#0b0c13] pb-24 max-w-md mx-auto">
+    <div className="min-h-screen bg-[#0b0c13] pb-28 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto">
       {/* Backdrop Header */}
-      <div className="relative w-full h-72 overflow-hidden shadow-2xl">
+      <div className="relative w-full h-72 sm:h-80 md:h-96 lg:h-[420px] overflow-hidden shadow-2xl sm:rounded-b-3xl">
         <img
           src={drama.bannerUrl || drama.posterUrl}
           alt={title}
@@ -143,7 +143,7 @@ export default function DramaDetail({ dramaId, onBack }) {
       </div>
 
       {/* Main Actions: Play & Favorite */}
-      <div className="px-4 mt-3 flex items-center gap-3">
+      <div className="px-4 sm:px-6 mt-4 flex items-center gap-3">
         {(() => {
           const lastWatched = drama ? getLastWatchedDrama(drama.id) : null;
           const hasResume = lastWatched && lastWatched.seconds >= 3;
@@ -186,7 +186,7 @@ export default function DramaDetail({ dramaId, onBack }) {
       </div>
 
       {/* Genres */}
-      <div className="px-4 mt-4 flex items-center gap-1.5 flex-wrap">
+      <div className="px-4 sm:px-6 mt-4 flex items-center gap-1.5 flex-wrap">
         {drama.genres?.map((g, i) => (
           <span
             key={i}
@@ -198,18 +198,18 @@ export default function DramaDetail({ dramaId, onBack }) {
       </div>
 
       {/* Synopsis / Description */}
-      <div className="px-4 mt-4">
+      <div className="px-4 sm:px-6 mt-4">
         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
           <Info size={13} />
           {lang === 'km' ? 'សេចក្តីសង្ខេប' : 'Synopsis'}
         </h3>
-        <p className="text-xs text-gray-300 leading-relaxed font-normal">
+        <p className="text-xs sm:text-sm text-gray-300 leading-relaxed font-normal">
           {desc}
         </p>
       </div>
 
       {/* Episode Selection Section */}
-      <section className="px-4 mt-6">
+      <section className="px-4 sm:px-6 mt-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-extrabold text-white">
             {t('episodes')} ({episodes.length})

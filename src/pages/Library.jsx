@@ -24,7 +24,7 @@ export default function Library() {
   }, []);
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3 max-w-md mx-auto">
+    <div className="min-h-screen pb-24 px-4 sm:px-6 pt-3 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
       {/* Subtab Toggle */}
       <div className="grid grid-cols-2 gap-2 p-1.5 bg-white/5 border border-white/5 rounded-2xl mb-4 max-w-md mx-auto">
         <button
@@ -73,9 +73,9 @@ export default function Library() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-4.5">
               {favorites.map((drama) => (
-                <DramaCard key={drama.id} drama={drama} size="small" />
+                <DramaCard key={drama.id} drama={drama} size="grid" />
               ))}
             </div>
           )}
@@ -109,7 +109,7 @@ export default function Library() {
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {history.map((item, idx) => {
                 const drama = dramas.find((d) => d.id === item.dramaId);
                 if (!drama) return null;

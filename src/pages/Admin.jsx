@@ -869,7 +869,7 @@ export default function Admin() {
   });
 
   return (
-    <div className="min-h-screen bg-[#0b0c13] pb-24 px-4 pt-3 text-white">
+    <div className="min-h-screen bg-[#0b0c13] pb-24 px-4 sm:px-6 pt-3 text-white w-full max-w-md sm:max-w-3xl md:max-w-5xl lg:max-w-7xl mx-auto">
       {/* Top Header */}
       <div className="flex items-center justify-between pb-3 border-b border-white/10">
         <div className="flex items-center gap-2">

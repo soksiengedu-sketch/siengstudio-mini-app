@@ -73,7 +73,7 @@ export default function Search() {
   };
 
   return (
-    <div className="min-h-screen pb-24 px-4 pt-3 max-w-md mx-auto">
+    <div className="min-h-screen pb-24 px-4 sm:px-6 pt-3 w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
       {/* Search Input Bar */}
       <div className="relative flex items-center">
         <SearchIcon size={18} className="absolute left-3.5 text-gray-400 pointer-events-none" />
@@ -128,9 +128,9 @@ export default function Search() {
             <p className="text-sm font-semibold">{t('noResults')}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-4.5">
             {results.map((drama) => (
-              <DramaCard key={drama.id} drama={drama} size="small" />
+              <DramaCard key={drama.id} drama={drama} size="grid" />
             ))}
           </div>
         )}

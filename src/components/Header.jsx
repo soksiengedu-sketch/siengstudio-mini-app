@@ -24,8 +24,8 @@ export default function Header() {
   } = useApp();
 
   return (
-    <header className="sticky top-0 z-30 bg-[#0b0c13]/95 backdrop-blur-xl border-b border-white/5 px-3 sm:px-4 py-2.5 transition-all">
-      <div className="w-full max-w-md mx-auto flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-30 bg-[#0b0c13]/95 backdrop-blur-xl border-b border-white/5 px-3 sm:px-6 py-2.5 transition-all">
+      <div className="w-full max-w-md sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex items-center justify-between gap-2">
         {/* Brand Logo & Name */}
         <div 
           className="flex items-center gap-2 cursor-pointer active:scale-95 transition-transform shrink-0"

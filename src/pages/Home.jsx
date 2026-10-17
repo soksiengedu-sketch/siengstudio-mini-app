@@ -47,8 +47,8 @@ export default function Home() {
   });
 
   const featured = dramas.filter((d) => d.isFeatured) || dramas.slice(0, 3);
-  const topCharts = [...dramas].sort((a, b) => (b.viewsNum || 0) - (a.viewsNum || 0)).slice(0, 5);
-  const newReleases = [...dramas].reverse().slice(0, 6);
+  const topCharts = [...dramas].sort((a, b) => (b.viewsNum || 0) - (a.viewsNum || 0)).slice(0, 8);
+  const newReleases = [...dramas].reverse().slice(0, 18);
 
   return (
     <div className="pb-24 overflow-x-hidden">
@@ -57,7 +57,7 @@ export default function Home() {
 
       {/* Continue Watching Row (if user has watch history) */}
       {history.length > 0 && (
-        <section className="mt-5 px-4">
+        <section className="mt-5 px-4 sm:px-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-extrabold text-white flex items-center gap-1.5">
               <History size={16} className="text-purple-400" />
@@ -103,7 +103,7 @@ export default function Home() {
       )}
 
       {/* Category Filter Pills */}
-      <div className="sticky top-12 z-20 bg-[#0b0c13]/90 backdrop-blur-md py-3 px-4 flex gap-2 overflow-x-auto no-scrollbar border-b border-white/5">
+      <div className="sticky top-12 z-20 bg-[#0b0c13]/90 backdrop-blur-md py-3 px-4 sm:px-6 flex gap-2 overflow-x-auto no-scrollbar border-b border-white/5">
         {categories.map((c) => (
           <button
             key={c.id}
@@ -123,7 +123,7 @@ export default function Home() {
       </div>
 
       {/* Invite Friends Reward Banner */}
-      <div className="px-4 mt-4">
+      <div className="px-4 sm:px-6 mt-4">
         <div
           onClick={() => {
             haptic.light();
@@ -145,7 +145,7 @@ export default function Home() {
       </div>
 
       {/* Top Charts / Ranking Row */}
-      <section className="mt-6 px-4">
+      <section className="mt-6 px-4 sm:px-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-extrabold text-white flex items-center gap-1.5">
             <Trophy size={16} className="text-amber-400" />
@@ -160,7 +160,7 @@ export default function Home() {
       </section>
 
       {/* Trending Now */}
-      <section className="mt-6 px-4">
+      <section className="mt-6 px-4 sm:px-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-extrabold text-white flex items-center gap-1.5">
             <Flame size={16} className="text-rose-500" />
@@ -196,9 +196,9 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-4.5">
           {newReleases.map((drama) => (
-            <DramaCard key={drama.id} drama={drama} size="small" />
+            <DramaCard key={drama.id} drama={drama} size="grid" />
           ))}
         </div>
       </section>
