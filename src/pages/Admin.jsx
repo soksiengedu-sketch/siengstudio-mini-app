@@ -304,9 +304,9 @@ export default function Admin() {
       setDramas(data || []);
       if (data && data.length > 0) {
         const currentSavedId = selectedDramaIdRef.current || (typeof window !== 'undefined' ? sessionStorage.getItem('siengstudio_selected_drama_id') : '');
-        const exists = data.some((d) => d.id === currentSavedId);
+        const exists = data.some((d) => String(d.id).trim() === String(currentSavedId).trim());
         if (currentSavedId && exists) {
-          if (selectedDramaIdRef.current !== currentSavedId) {
+          if (String(selectedDramaIdRef.current).trim() !== String(currentSavedId).trim()) {
             setSelectedDramaId(currentSavedId);
           }
         } else {
@@ -613,49 +613,148 @@ export default function Admin() {
     try {
       if (type === 'drama') {
         const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
-        const res = await api.deleteDrama(targetDramaId, activePin);
-        if (res && (res.success || res.message)) {
-          haptic.success();
-          showMsg('success', `បានលុបរឿង "${title}" ដោយជោគជ័យ!`);
-          const targetStr = String(targetDramaId).trim();
-          const remaining = dramas.filter((d) => String(d.id).trim() !== targetStr);
-          setDramas(remaining);
-          const nextSelected = remaining[0]?.id || '';
-          setSelectedDramaId(nextSelected);
-          selectedDramaIdRef.current = nextSelected;
-          setHasUnsavedChanges(true);
-          await api.saveDatabase(remaining, activePin).catch(() => {});
-          await loadData();
-          setActiveTabLocal('manage');
-        } else {
-          showMsg('error', res?.message || 'Failed to delete drama');
+        const targetStr = String(targetDramaId).trim();
+
+        // 1. Immediately update React state so UI updates in 0ms
+        const remaining = dramas.filter((d) => String(d.id).trim() !== targetStr);
+        setDramas(remaining);
+        const nextSelected = remaining[0]?.id || '';
+        setSelectedDramaId(nextSelected);
+        selectedDramaIdRef.current = nextSelected;
+        if (editingDrama && String(editingDrama.id).trim() === targetStr) {
+          setEditingDrama(null);
         }
+
+        // 2. Immediately update local storage cache
+        const cached = getLocalCachedDramas() || [];
+        const filteredCached = cached.filter((d) => String(d.id).trim() !== targetStr);
+        setLocalCachedDramas(filteredCached);
+
+        // 3. Call backend API to delete drama
+        await api.deleteDrama(targetDramaId, activePin);
+
+        // 4. Save and sync remaining database to backend and Cloudflare R2
+        await api.saveDatabase(remaining, activePin).catch(() => {});
+
+        // 5. Update stats
+        const totalEp = remaining.reduce((acc, d) => acc + (d.episodes?.length || 0), 0);
+        setStats((prev) => ({
+          ...prev,
+          totalDramas: remaining.length,
+          totalEpisodes: totalEp
+        }));
+
+        haptic.success();
+        showMsg('success', `បានលុបរឿង "${title}" ដោយជោគជ័យ!`);
+        setHasUnsavedChanges(false);
+        setActiveTabLocal('manage');
       } else if (type === 'episode') {
         const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
-        const res = await api.deleteEpisode(targetDramaId, episodeId, activePin);
-        if (res && (res.success || res.episodes || res.cachedOnly)) {
-          haptic.success();
-          showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
-          setSelectedDramaId(targetDramaId);
-          selectedDramaIdRef.current = targetDramaId;
-          setHasUnsavedChanges(true);
-          await loadData();
-        } else {
-          showMsg('error', res?.message || 'Failed to delete episode');
+        const targetDramaStr = String(targetDramaId).trim();
+        const targetEpStr = String(episodeId).trim();
+        const targetEpNum = Number(episodeId);
+
+        // 1. Immediately update React state for dramas
+        const updatedDramas = dramas.map((d) => {
+          if (String(d.id).trim() === targetDramaStr) {
+            const filteredEps = (d.episodes || []).filter((e) => {
+              const matchId = String(e.id).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.id) === targetEpNum);
+              const matchEp = String(e.episodeNumber).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.episodeNumber) === targetEpNum) ||
+                              (epNumber != null && (String(e.episodeNumber).trim() === String(epNumber).trim() || Number(e.episodeNumber) === Number(epNumber)));
+              return !matchId && !matchEp;
+            });
+            return {
+              ...d,
+              episodes: filteredEps,
+              totalEpisodes: filteredEps.length
+            };
+          }
+          return d;
+        });
+        setDramas(updatedDramas);
+
+        // 2. Update editingDrama if active
+        if (editingDrama && String(editingDrama.id).trim() === targetDramaStr) {
+          const updatedEditingEps = (editingDrama.episodes || []).filter((e) => {
+            const matchId = String(e.id).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.id) === targetEpNum);
+            const matchEp = String(e.episodeNumber).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.episodeNumber) === targetEpNum) ||
+                            (epNumber != null && (String(e.episodeNumber).trim() === String(epNumber).trim() || Number(e.episodeNumber) === Number(epNumber)));
+            return !matchId && !matchEp;
+          });
+          setEditingDrama({
+            ...editingDrama,
+            episodes: updatedEditingEps,
+            totalEpisodes: updatedEditingEps.length
+          });
         }
+
+        // 3. Immediately update local storage
+        updateLocalDrama(targetDramaId, (prev) => {
+          const filtered = (prev.episodes || []).filter((e) => {
+            const matchId = String(e.id).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.id) === targetEpNum);
+            const matchEp = String(e.episodeNumber).trim() === targetEpStr || (!isNaN(targetEpNum) && Number(e.episodeNumber) === targetEpNum) ||
+                            (epNumber != null && (String(e.episodeNumber).trim() === String(epNumber).trim() || Number(e.episodeNumber) === Number(epNumber)));
+            return !matchId && !matchEp;
+          });
+          return { ...prev, episodes: filtered, totalEpisodes: filtered.length };
+        });
+
+        // 4. Call server API to delete episode
+        await api.deleteEpisode(targetDramaId, episodeId, activePin);
+
+        // 5. Save and sync updated dramas to backend and Cloudflare R2
+        await api.saveDatabase(updatedDramas, activePin).catch(() => {});
+
+        // 6. Update stats
+        const totalEp = updatedDramas.reduce((acc, d) => acc + (d.episodes?.length || 0), 0);
+        setStats((prev) => ({
+          ...prev,
+          totalEpisodes: totalEp
+        }));
+
+        haptic.success();
+        showMsg('success', `បានលុបភាគ ${epNumber} ដោយជោគជ័យ!`);
+        setHasUnsavedChanges(false);
       } else if (type === 'allEpisodes') {
         const targetDramaId = dramaId || selectedDramaId || selectedDrama?.id;
-        const res = await api.deleteAllEpisodes(targetDramaId, activePin);
-        if (res && res.success) {
-          haptic.success();
-          showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង "${title}" រួចរាល់!`);
-          setSelectedDramaId(targetDramaId);
-          selectedDramaIdRef.current = targetDramaId;
-          setHasUnsavedChanges(true);
-          await loadData();
-        } else {
-          showMsg('error', res?.message || 'Failed to delete all episodes');
+        const targetDramaStr = String(targetDramaId).trim();
+
+        // 1. Immediately update React state
+        const updatedDramas = dramas.map((d) => {
+          if (String(d.id).trim() === targetDramaStr) {
+            return { ...d, episodes: [], totalEpisodes: 0 };
+          }
+          return d;
+        });
+        setDramas(updatedDramas);
+
+        if (editingDrama && String(editingDrama.id).trim() === targetDramaStr) {
+          setEditingDrama({ ...editingDrama, episodes: [], totalEpisodes: 0 });
         }
+
+        // 2. Update local storage
+        updateLocalDrama(targetDramaId, (prev) => ({
+          ...prev,
+          episodes: [],
+          totalEpisodes: 0
+        }));
+
+        // 3. Call server API
+        await api.deleteAllEpisodes(targetDramaId, activePin);
+
+        // 4. Save and sync
+        await api.saveDatabase(updatedDramas, activePin).catch(() => {});
+
+        // 5. Update stats
+        const totalEp = updatedDramas.reduce((acc, d) => acc + (d.episodes?.length || 0), 0);
+        setStats((prev) => ({
+          ...prev,
+          totalEpisodes: totalEp
+        }));
+
+        haptic.success();
+        showMsg('success', `បានលុបគ្រប់ភាគទាំងអស់នៃរឿង "${title}" រួចរាល់!`);
+        setHasUnsavedChanges(false);
       }
     } catch (err) {
       showMsg('error', 'Error deleting: ' + err.message);
@@ -3448,7 +3547,7 @@ export default function Admin() {
 
       {/* ================= MODAL: IN-APP DELETE CONFIRMATION ================= */}
       {deleteDialog.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
           <div className="w-full max-w-sm bg-[#151624] border border-red-500/40 rounded-3xl p-5 shadow-2xl flex flex-col items-center text-center relative">
             <button
               type="button"

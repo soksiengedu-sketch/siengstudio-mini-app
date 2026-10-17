@@ -28,7 +28,7 @@ class Database {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         this.data = JSON.parse(raw);
-        if (!this.data.dramas || this.data.dramas.length === 0) {
+        if (!Array.isArray(this.data.dramas)) {
           this.data.dramas = initialDramas;
         }
       } catch (err) {
@@ -88,7 +88,12 @@ class Database {
   getDramaById(id) {
     if (!id) return null;
     const targetStr = String(id).trim();
-    const drama = this.data.dramas.find((d) => String(d.id).trim() === targetStr);
+    let targetDecoded = targetStr;
+    try { targetDecoded = decodeURIComponent(targetStr); } catch (e) {}
+    const drama = this.data.dramas.find((d) => {
+      const dIdStr = String(d.id).trim();
+      return dIdStr === targetStr || dIdStr === targetDecoded;
+    });
     if (drama) {
       drama.episodes = drama.episodes || [];
       drama.totalEpisodes = drama.episodes.length;
@@ -217,7 +222,12 @@ class Database {
   deleteDrama(dramaId) {
     if (!dramaId) return false;
     const targetIdStr = String(dramaId).trim();
-    const index = this.data.dramas.findIndex((d) => String(d.id).trim() === targetIdStr);
+    let targetDecoded = targetIdStr;
+    try { targetDecoded = decodeURIComponent(targetIdStr); } catch (e) {}
+    const index = this.data.dramas.findIndex((d) => {
+      const dIdStr = String(d.id).trim();
+      return dIdStr === targetIdStr || dIdStr === targetDecoded;
+    });
     if (index === -1) return false;
     this.data.dramas.splice(index, 1);
     this.save();
